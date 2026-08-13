@@ -349,7 +349,7 @@ world/serverconfig/scorely/
 | **Phase 4** | 进度数据读取：AdvancementReader（磁盘解析 + 内存） | 1 天 |
 | **Phase 5** | ScoringRule（advancement 型）+ 总榜计算 | 1 天 |
 | **Phase 5.1** | stat 型配置扩展：StatTier 阶段奖励 + StatMatcher 计分配置（enabled/multiplier/cap/divisor/tiers，规则默认值 + 匹配项覆盖） | 1 天 |
-| **Phase 6** | 命令系统（score / rank / admin） | 2 天 |
+| **Phase 6** | 命令系统（score / rank / admin）✅ | 2 天 |
 | **Phase 7** | 事件集成（ServerTick 定时刷新循环） | 1 天 |
 | **Phase 8** | ConfigManager + 自动保存 | 1 天 |
 | **Phase 9** | 国际化（en_us + zh_cn） | 0.5 天 |

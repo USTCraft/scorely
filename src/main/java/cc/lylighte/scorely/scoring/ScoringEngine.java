@@ -78,9 +78,18 @@ public final class ScoringEngine {
 		cache.rebuild(scores);
 	}
 
-	/** 积分缓存（排行榜快照）。 */
+	/** 积分缓存（排行榜查询快照）。 */
 	public ScoreCache getCache() {
 		return cache;
+	}
+
+	/**
+	 * 获取积分规则列表（命令层展示用，如 {@code admin rule list}）。
+	 *
+	 * @return 规则列表（不可变副本，构造时已 {@link List#copyOf}）
+	 */
+	public List<ScoringRule> getRules() {
+		return rules;
 	}
 
 	/**
