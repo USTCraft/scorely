@@ -10,7 +10,7 @@ import java.util.Map;
  * 接入后可实际计分验证，不应视为最终策略。Phase 8 接入 {@code config.json} 后，
  * 服务端配置的 rules 将替换本类产出。</p>
  *
- * <p>规则结构与 PLAN.md 配置示例一致：</p>
+ * <p>规则结构与 doc/PLAN.md 配置示例一致：</p>
  * <ul>
  *   <li>{@code mining} —— 挖掘：mined/* 线性 ×1.0；</li>
  *   <li>{@code combat} —— 战斗：killed/* 线性 ×2.0；</li>
