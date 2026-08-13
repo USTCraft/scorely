@@ -4,9 +4,11 @@ import java.util.List;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
+import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.util.ChatHelper;
+import cc.lylighte.scorely.util.Result;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -18,7 +20,7 @@ import net.minecraft.server.permissions.Permissions;
  *
  * <ul>
  *   <li>{@code /scorely admin reload} —— 重载配置（Phase 8 接入 ConfigManager）；</li>
- *   <li>{@code /scorely admin refresh} —— 强制全量刷新积分（Phase 7 接入事件层）；</li>
+ *   <li>{@code /scorely admin refresh} —— 强制全量刷新积分（受周期配额限制）；</li>
  *   <li>{@code /scorely admin rule list} —— 列出所有积分规则及其计分配置。</li>
  * </ul>
  */
@@ -27,13 +29,13 @@ public final class AdminCommand {
 	private AdminCommand() {
 	}
 
-	public static LiteralArgumentBuilder<CommandSourceStack> build(ScoringEngine engine) {
+	public static LiteralArgumentBuilder<CommandSourceStack> build(ScoringEngine engine, RefreshScheduler scheduler) {
 		return Commands.literal("admin")
 			.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.then(Commands.literal("reload")
 				.executes(ctx -> reload(ctx.getSource())))
 			.then(Commands.literal("refresh")
-				.executes(ctx -> refresh(ctx.getSource())))
+				.executes(ctx -> refresh(ctx.getSource(), scheduler)))
 			.then(Commands.literal("rule")
 				.then(Commands.literal("list")
 					.executes(ctx -> ruleList(ctx.getSource(), engine))));
@@ -46,11 +48,14 @@ public final class AdminCommand {
 		return 1;
 	}
 
-	/** 强制全量刷新（Phase 7 实现）。 */
-	private static int refresh(CommandSourceStack source) {
-		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(
-			" 强制刷新将在 Phase 7 接入（事件层 + 定时重算）")), false);
-		return 1;
+	/** 强制全量刷新（受周期配额限制，配额用尽时拒绝）。 */
+	private static int refresh(CommandSourceStack source, RefreshScheduler scheduler) {
+		Result result = scheduler.refreshNow();
+		String message = result.isSuccess()
+			? " " + result.getMessage()
+			: " " + ChatHelper.RED + result.getMessage() + ChatHelper.RESET;
+		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(message)), false);
+		return result.isSuccess() ? 1 : 0;
 	}
 
 	/** 列出所有积分规则（含计分配置）。 */

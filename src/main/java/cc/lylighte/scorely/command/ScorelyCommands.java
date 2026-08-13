@@ -9,6 +9,7 @@ import com.mojang.brigadier.context.CommandContext;
 import cc.lylighte.scorely.command.handlers.AdminCommand;
 import cc.lylighte.scorely.command.handlers.RankCommand;
 import cc.lylighte.scorely.command.handlers.ScoreCommand;
+import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.util.ChatHelper;
@@ -31,13 +32,16 @@ import net.minecraft.server.level.ServerPlayer;
  *   <li>{@code /scorely admin reload|refresh|rule list} —— 管理（OP）</li>
  * </ul>
  *
- * <p>引擎引用通过 {@link #setEngine} 注入（Phase 7 事件层接入后由入口统一构建）。
- * 本类同时提供命令层共享工具（玩家名解析、规则查找）。</p>
+ * <p>引擎与刷新调度器引用通过 {@link #setEngine} / {@link #setScheduler} 注入，
+ * 由入口统一构建。本类同时提供命令层共享工具（玩家名解析、规则查找）。</p>
  */
 public final class ScorelyCommands {
 
-	/** 默认空引擎（Phase 7 之前无数据源，命令框架先行可用）。 */
+	/** 默认空引擎（事件层接入前无数据源，命令框架先行可用）。 */
 	private static ScoringEngine engine = new ScoringEngine(List.of());
+
+	/** 刷新调度器（Phase 7 事件层提供；可能为 null，admin refresh 需先注入）。 */
+	private static RefreshScheduler scheduler;
 
 	private ScorelyCommands() {
 	}
@@ -45,6 +49,11 @@ public final class ScorelyCommands {
 	/** 注入积分引擎（入口初始化时调用）。 */
 	public static void setEngine(ScoringEngine newEngine) {
 		engine = newEngine != null ? newEngine : new ScoringEngine(List.of());
+	}
+
+	/** 注入刷新调度器（入口初始化时调用）。 */
+	public static void setScheduler(RefreshScheduler newScheduler) {
+		scheduler = newScheduler;
 	}
 
 	/**
@@ -59,7 +68,7 @@ public final class ScorelyCommands {
 			.executes(ScorelyCommands::help)
 			.then(ScoreCommand.build(engine))
 			.then(RankCommand.build(engine))
-			.then(AdminCommand.build(engine)));
+			.then(AdminCommand.build(engine, scheduler)));
 	}
 
 	/** {@code /scorely} —— 帮助信息。 */

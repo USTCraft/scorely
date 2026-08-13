@@ -1,8 +1,10 @@
 package cc.lylighte.scorely;
 
-import java.util.List;
-
 import cc.lylighte.scorely.command.ScorelyCommands;
+import cc.lylighte.scorely.event.PlayerEvents;
+import cc.lylighte.scorely.event.RefreshScheduler;
+import cc.lylighte.scorely.event.ServerEvents;
+import cc.lylighte.scorely.scoring.DefaultRules;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 
 import net.fabricmc.api.ModInitializer;
@@ -21,8 +23,15 @@ public class Scorely implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		LOGGER.info("Scorely initializing...");
-		// Phase 6：命令系统（引擎先以空规则初始化，Phase 7 事件层接入后重建）
-		ScorelyCommands.setEngine(new ScoringEngine(List.of()));
+		// 引擎：内置默认规则（占位，Phase 8 由 config.json 替换）
+		ScoringEngine engine = new ScoringEngine(DefaultRules.create());
+		ScorelyCommands.setEngine(engine);
+		// Phase 7：事件层（定时刷新循环 + 合并触发）
+		RefreshScheduler scheduler = new RefreshScheduler(engine);
+		ScorelyCommands.setScheduler(scheduler);
+		ServerEvents.register(scheduler);
+		PlayerEvents.register(scheduler);
+		// Phase 6：命令系统
 		CommandRegistrationCallback.EVENT.register(ScorelyCommands::register);
 	}
 

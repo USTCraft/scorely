@@ -90,7 +90,9 @@ cc.lylighte.scorely/
 │
 ├── event/                           # 事件处理（通过 Fabric API，版本间较稳定）
 │   ├── ServerEvents.java            # 服务器生命周期 + 定时刷新循环（ServerTickEvents）
-│   └── PlayerEvents.java            # 玩家事件（加入/离开，用于缓存清理）
+│   ├── PlayerEvents.java            # 玩家事件（加入触发刷新请求）
+│   ├── RefreshScheduler.java        # 刷新调度器（定时主循环 + 合并触发 + 周期配额）
+│   └── PlayerDataCache.java         # 离线玩家数据缓存（mtime+size 指纹，减少磁盘访问）
 │
 └── util/                            # 通用工具（无 MC 版本依赖）
     ├── Result.java                  # 操作结果（success + message）
@@ -350,7 +352,7 @@ world/serverconfig/scorely/
 | **Phase 5** | ScoringRule（advancement 型）+ 总榜计算 | 1 天 |
 | **Phase 5.1** | stat 型配置扩展：StatTier 阶段奖励 + StatMatcher 计分配置（enabled/multiplier/cap/divisor/tiers，规则默认值 + 匹配项覆盖） | 1 天 |
 | **Phase 6** | 命令系统（score / rank / admin）✅ | 2 天 |
-| **Phase 7** | 事件集成（ServerTick 定时刷新循环） | 1 天 |
+| **Phase 7** | 事件集成（ServerTick 定时刷新循环）✅ | 1 天 |
 | **Phase 8** | ConfigManager + 自动保存 | 1 天 |
 | **Phase 9** | 国际化（en_us + zh_cn） | 0.5 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
