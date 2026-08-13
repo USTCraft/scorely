@@ -1,14 +1,20 @@
 package cc.lylighte.scorely.compat;
 
+import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.PlayerAdvancements;
+import net.minecraft.server.ServerAdvancementManager;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
 import net.minecraft.stats.StatsCounter;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 版本差异封装层（唯一允许直接引用 Minecraft 内部类的入口之一）。
@@ -64,5 +70,27 @@ public final class CompatHelper {
 			}
 			result.put(typeKey + "/" + valueId.toString(), value);
 		}
+	}
+
+	/**
+	 * 读取在线玩家的已完成进度 ID 集合。
+	 *
+	 * <p>实现：遍历服务器全部进度（{@code ServerAdvancementManager}），逐项判断
+	 * {@code PlayerAdvancements#getOrStartProgress(...)} 的 {@code isDone()}。</p>
+	 *
+	 * @param player 在线玩家
+	 * @return 已完成的进度 ID 集合（如 {@code "minecraft:story/root"}）
+	 */
+	public static Set<String> readCompletedAdvancements(ServerPlayer player) {
+		Set<String> result = new HashSet<>();
+		PlayerAdvancements advancements = player.getAdvancements();
+		// 26.2：ServerPlayer 无 getServer()，经 ServerLevel#getServer() 获取管理器
+		ServerAdvancementManager manager = ((ServerLevel) player.level()).getServer().getAdvancements();
+		for (AdvancementHolder holder : manager.getAllAdvancements()) {
+			if (advancements.getOrStartProgress(holder).isDone()) {
+				result.add(holder.id().toString());
+			}
+		}
+		return result;
 	}
 }
