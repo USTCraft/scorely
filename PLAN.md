@@ -60,10 +60,8 @@ cc.lylighte.scorely/
 ├── Scorely.java                     # ModInitializer 入口
 │
 ├── compat/                          # 版本适配层（所有 MC 版本相关代码集中于此）
-│   ├── mixin/                       # Mixin 注入（版本敏感）
-│   │   ├── StatsCounterMixin.java   # 拦截统计增加事件（方法名随版本变化）
-│   │   └── PlayerAdvancementsMixin.java  # 拦截进度完成事件
-│   └── CompatHelper.java            # 版本差异封装（类引用、方法名、API 差异）
+│   ├── mixin/                       # Mixin 注入（版本敏感，当前为空；事件日志功能预留）
+│   └── CompatHelper.java            # 版本差异封装（在线玩家统计/进度的内存读取）
 │
 ├── config/                          # 配置管理（纯逻辑，无 MC 版本依赖）
 │   ├── Config.java                  # 通用 JSON 读写工具（泛型）
@@ -73,11 +71,11 @@ cc.lylighte.scorely/
 │
 ├── scoring/                         # 积分计算引擎（纯逻辑，无 MC 版本依赖）
 │   ├── ScoringRule.java             # 积分规则定义（匹配器 + 权重 + 模式）
-│   ├── ScoringEngine.java           # 积分计算引擎（增量更新 + 全量重算）
+│   ├── ScoringEngine.java           # 积分计算引擎（定时全量重算 + 查询）
 │   └── ScoreCache.java              # 积分缓存（ConcurrentHashMap）
 │
-├── stats/                           # 统计数据获取层（通过 CompatHelper 解耦版本差异）
-│   ├── StatsReader.java             # 从 stats/*.json 读取玩家统计数据
+├── stats/                           # 统计数据获取层
+│   ├── StatsReader.java             # 从磁盘 stats/*.json 解析玩家统计（纯 Java）
 │   └── StatsType.java               # 统计类型映射（criteria → stat path）
 │
 ├── advancement/                     # 进度数据获取层
@@ -91,8 +89,8 @@ cc.lylighte.scorely/
 │       └── AdminCommand.java        # /scorely admin（reload/refresh/rule）
 │
 ├── event/                           # 事件处理（通过 Fabric API，版本间较稳定）
-│   ├── ServerEvents.java            # 服务器生命周期（ServerLifecycleEvents / ServerTickEvents）
-│   └── PlayerEvents.java            # 玩家事件（加入/统计变化）
+│   ├── ServerEvents.java            # 服务器生命周期 + 定时刷新循环（ServerTickEvents）
+│   └── PlayerEvents.java            # 玩家事件（加入/离开，用于缓存清理）
 │
 └── util/                            # 通用工具（无 MC 版本依赖）
     ├── Result.java                  # 操作结果（success + message）
@@ -139,10 +137,10 @@ Scorely.java   ← 入口，注册各模块
 
 **两种计分模式**：
 
-| 模式 | 触发源 | 计分方式 | 示例 |
+| 模式 | 数据源 | 计分方式 | 示例 |
 |---|---|---|---|
-| **stat（统计型）** | `StatsCounter.increment()` | 累加：`增加量 × multiplier` | 挖 1 块石头 +1 分 |
-| **advancement（进度型）** | `PlayerAdvancements.award()` | 一次性：完成即得固定分 | 完成“钻石！”+10 分 |
+| **stat（统计型）** | 统计累计值（内存/磁盘） | 累计：`统计值 × multiplier` | 挖 100 块石头 +100 分 |
+| **advancement（进度型）** | 进度完成状态（内存/磁盘） | 一次性：已完成的进度给固定分 | 完成“钻石！”+10 分 |
 
 ### 积分规则（ScoringRule）
 
@@ -211,7 +209,7 @@ public class StatMatcher {
       }
     }
   ],
-  "refreshInterval": 30,
+  "refreshInterval": 5,
   "autoSaveInterval": 60
 }
 ```
@@ -223,13 +221,7 @@ public class ScoringEngine {
     Map<UUID, Map<String, Double>> playerScores;  // 玩家 → 规则ID → 分数
     List<ScoringRule> rules;
 
-    // stat 型：统计变化时增量更新
-    void onStatIncreased(UUID player, String statName, int amount);
-
-    // advancement 型：进度完成时一次性计分
-    void onAdvancementCompleted(UUID player, String advancementId);
-
-    // 全量：从磁盘重读所有统计 + 进度并重算
+    // 全量：重读所有玩家统计 + 进度（在线读内存、离线读磁盘）并重算
     void recalculateAll(MinecraftServer server);
 
     // 查询：获取某规则排行榜
@@ -249,25 +241,16 @@ public class ScoringEngine {
 ### 数据流
 
 ```
-统计增加（StatsCounterMixin 拦截）
+定时全量刷新（可配置，默认 5 分钟）
     ↓
-ScoringEngine.onStatIncreased()    ← 匹配 stat 型规则，增量计分
-
-进度完成（PlayerAdvancementsMixin 拦截）
+在线玩家：内存实时读取（CompatHelper 中转 StatsCounter / PlayerAdvancements）
+离线玩家：磁盘解析 stats/*.json + advancements/*.json
     ↓
-ScoringEngine.onAdvancementCompleted()  ← 匹配 advancement 型规则，一次性计分
+ScoringEngine.recalculateAll()     ← 全量重算所有维度（幂等，天然自愈）
     ↓
-ScoreCache 标记脏数据
-
-ServerTick（每秒）
+ScoreCache 更新积分快照
     ↓
-消费脏数据，排序，准备查询结果
-
-定时全量刷新（可配置，默认30分钟）
-    ↓
-读取 stats/*.json + advancements/*.json
-    ↓
-ScoringEngine.recalculateAll()     ← 全量重算所有维度
+查询命令读快照（零计算）
 ```
 
 ---
@@ -322,7 +305,7 @@ dependencies {
 world/serverconfig/scorely/
 ├── config.json          # 全局配置
 │   ├── rules[]          # 积分规则列表
-│   ├── refreshInterval  # 全量刷新间隔（分钟，默认30）
+│   ├── refreshInterval  # 全量刷新间隔（分钟，默认5）
 │   └── autoSaveInterval # 自动保存间隔（秒，默认60）
 └── players.json         # 玩家数据（名称缓存等）
 ```
@@ -335,17 +318,17 @@ world/serverconfig/scorely/
 |---|---|---|
 | **Phase 0** | 项目重命名（template-mod → scorely），清理模板代码 | 0.5 天 |
 | **Phase 1** | 搭建包骨架 + 通用工具类（Result、ChatHelper、Config） | 1 天 |
-| **Phase 2** | StatsReader + `compat/mixin/StatsCounterMixin` + CompatHelper | 2 天 |
-| **Phase 3** | ScoringRule（stat 型）+ ScoringEngine + ScoreCache | 2 天 |
-| **Phase 4** | AdvancementReader + `compat/mixin/PlayerAdvancementsMixin` | 1.5 天 |
-| **Phase 5** | ScoringRule（advancement 型）+ 总榜计算 | 1.5 天 |
+| **Phase 2** | 统计数据读取：StatsReader（磁盘解析）+ CompatHelper（在线玩家内存读取） | 1.5 天 |
+| **Phase 3** | ScoringRule（stat 型）+ ScoringEngine（全量重算）+ ScoreCache | 2 天 |
+| **Phase 4** | 进度数据读取：AdvancementReader（磁盘解析 + 内存） | 1 天 |
+| **Phase 5** | ScoringRule（advancement 型）+ 总榜计算 | 1 天 |
 | **Phase 6** | 命令系统（score / rank / admin） | 2 天 |
-| **Phase 7** | 事件集成（ServerEvents + tick 循环） | 1 天 |
-| **Phase 8** | ConfigManager + 自动保存 + 全量刷新 | 1 天 |
+| **Phase 7** | 事件集成（ServerTick 定时刷新循环） | 1 天 |
+| **Phase 8** | ConfigManager + 自动保存 | 1 天 |
 | **Phase 9** | 国际化（en_us + zh_cn） | 0.5 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
 
-**总计**：约 15 天
+**总计**：约 13.5 天
 
 ---
 
@@ -363,24 +346,22 @@ world/serverconfig/scorely/
 ```java
 // compat/CompatHelper.java — 封装版本差异
 public class CompatHelper {
-    // 26.2 Mojang mapping: net.minecraft.stats.StatsCounter#increment
-    public static void onStatIncrement(UUID player, Stat<?> stat, int amount) {
-        ScoringEngine.getInstance().onStatIncreased(player, stat.getName(), amount);
-    }
+    // 26.2 Mojang mapping: ServerPlayer#getStats → StatsCounter
+    // 将内存统计转换为 统计名 → 数值 的纯 Java Map，供积分引擎使用
+    public static Map<String, Integer> readPlayerStats(ServerPlayer player) { ... }
 
-    // 26.2 Mojang mapping: net.minecraft.server.PlayerAdvancements#award
-    public static void onAdvancementAwarded(UUID player, String advancementId) {
-        ScoringEngine.getInstance().onAdvancementCompleted(player, advancementId);
-    }
+    // 26.2 Mojang mapping: PlayerAdvancements 内存查询已完成进度
+    public static Set<String> readCompletedAdvancements(ServerPlayer player) { ... }
 }
 ```
 
-**2. Mixin 与业务逻辑解耦**
+**2. Mixin 与业务逻辑解耦（预留）**
 
-`StatsCounterMixin` 和 `PlayerAdvancementsMixin` 只做拦截和转发：
+当前积分链路不包含 Mixin（纯定时全量重算），`scorely.mixins.json` 的 mixins 列表保持为空。
+未来实现“进度完成事件日志”等功能需要实时感知时，在 `compat/mixin/` 下新增拦截器，只做拦截转发，通过 `CompatHelper` 调用业务层：
 
 ```java
-// compat/mixin/StatsCounterMixin.java
+// compat/mixin/StatsCounterMixin.java（未来功能预留示例）
 @Mixin(StatsCounter.class)
 public class StatsCounterMixin {
     @Inject(method = "increment", at = @At("TAIL"))
@@ -390,34 +371,19 @@ public class StatsCounterMixin {
         }
     }
 }
-
-// compat/mixin/PlayerAdvancementsMixin.java
-@Mixin(PlayerAdvancements.class)
-public class PlayerAdvancementsMixin {
-    @Inject(method = "award", at = @At("RETURN"))
-    private void onAdvancementAwarded(
-        AdvancementHolder advancement, String criterionKey,
-        CallbackInfoReturnable<Boolean> cir
-    ) {
-        if (cir.getReturnValue()) {
-            // award 返回 true 表示进度新完成
-            CompatHelper.onAdvancementAwarded(playerUUID, advancement.id().toString());
-        }
-    }
-}
 ```
 
 **3. 避免在业务层硬编码 MC 类型**
 
 ```java
 // ❌ 坏：业务层直接引用 MC 类
-public class ScoringEngine {
-    void onStatIncreased(UUID player, Stat<?> stat, int amount) { ... }
+public class StatsReader {
+    StatsCounter readPlayerStats(ServerPlayer player) { ... }
 }
 
-// ✅ 好：业务层只接收字符串标识
-public class ScoringEngine {
-    void onStatIncreased(UUID player, String statName, int amount) { ... }
+// ✅ 好：业务层只接收纯 Java 结构（Map / 字符串标识）
+public class StatsReader {
+    Map<String, Integer> readPlayerStats(UUID player) { ... }
 }
 ```
 
@@ -440,12 +406,13 @@ public class ScoringEngine {
 
 减少依赖、简化架构。展示层通过命令/屏幕/Web 实现。
 
-### D2: Mixin 拦截 vs 纯定时读取
+### D2: 积分计算采用纯定时全量重算（无 Mixin 拦截）
 
-**选择 Mixin 拦截 + 定时全量兜底**：
-- Mixin 保证积分实时性（挖掘/完成进度后立即反映在查询结果中）
-- 全量刷新修正潜在的不一致
-- 26.2 使用 Mojang mapping：`StatsCounter.increment()` + `PlayerAdvancements.award()`
+**决策**：榜单查询接受延迟（默认 5 分钟，可配置），因此取消实时拦截：
+- 定时任务每 `refreshInterval` 分钟全量重算：在线玩家读内存（StatsCounter / PlayerAdvancements），离线玩家读磁盘 JSON
+- 全量重算天然幂等（统计累计值 × 权重），无增量状态、无累积误差、故障自愈
+- 避免 Mixin 注入风险与版本敏感代码；未来“进度完成事件日志”功能需要实时感知时，再单独引入拦截器，与积分链路解耦
+- 查询命令永远读缓存快照，零计算开销
 
 ### D3: 积分规则 JSON 配置
 
@@ -460,9 +427,9 @@ public class ScoringEngine {
 
 ### D5: 版本隔离架构（`compat/` 层）
 
-- 将 Mixin 和所有 `net.minecraft.*` 引用集中到 `compat/` 包
+- 将 Mixin（未来）和所有 `net.minecraft.*` 引用集中到 `compat/` 包
 - 业务层（`scoring/`、`config/`、`util/`）禁止直接 import MC 内部类
-- Mixin 只做拦截转发，通过 `CompatHelper` 调用纯逻辑层
+- `CompatHelper` 承担在线玩家数据的内存读取（版本敏感），向业务层输出纯 Java 数据结构
 - 为未来引入 Stonecutter 多版本构建预留最小迁移路径
 
 ---
@@ -474,6 +441,6 @@ public class ScoringEngine {
 - [ ] `src/main/resources/fabric.mod.json` → 修改 id/name/description/entrypoints
 - [ ] `src/main/resources/template-mod.mixins.json` → 重命名为 `scorely.mixins.json`，`package` 改为 `cc.lylighte.scorely.compat.mixin`
 - [ ] `src/main/java/cc/lylighte/TemplateMod.java` → 重命名为 `Scorely.java`
-- [ ] `src/main/java/cc/lylighte/mixin/ExampleMixin.java` → 删除（Phase 2 在 `compat/mixin/` 下新建 `StatsCounterMixin`）
+- [ ] `src/main/java/cc/lylighte/mixin/ExampleMixin.java` → 删除（积分链路无 Mixin，纯定时全量重算）
 - [ ] `src/main/resources/assets/template-mod/` → 重命名为 `assets/scorely/`
 - [ ] `README.md` → 更新为 Scorely 项目说明
