@@ -268,6 +268,8 @@ public class ScoringEngine {
 
 ### 数据流
 
+全量路径（Phase 7 现状，Phase 8.1 起仅定时任务 / `admin refresh` 触发）：
+
 ```
 定时全量刷新（可配置，默认 5 分钟）
     ↓
@@ -279,6 +281,18 @@ ScoringEngine.recalculateAll()     ← 全量重算所有维度（幂等，天�
 ScoreCache 更新积分快照
     ↓
 查询命令读快照（零计算）
+```
+
+单玩家路径（Phase 8.1：进服被动触发 + `/scorely refresh` 主动触发）：
+
+```
+玩家进服 / 玩家执行 /scorely refresh
+    ↓
+只读对应玩家：在线走内存（CompatHelper）/ 离线走磁盘
+    ↓
+ScoringEngine.recalculatePlayer(uuid)   ← 单玩家全量重算，只更新该玩家缓存条目
+    ↓
+不消耗全服配额、不触发全服重算
 ```
 
 ---
@@ -331,11 +345,11 @@ dependencies {
 
 ```
 world/serverconfig/scorely/
-├── config.json          # 全局配置
-│   ├── rules[]          # 积分规则列表
-│   ├── refreshInterval  # 全量刷新间隔（分钟，默认5）
-│   └── autoSaveInterval # 自动保存间隔（秒，默认60）
-└── players.json         # 玩家数据（名称缓存等）
+├── config.json          # 全局配置（首次启动自动生成默认规则；加载校验失败回退默认 + 损坏文件保留为 .bak）
+│   ├── rules[]          # 积分规则列表（校验：id 唯一、type 合法、数值非负、divisor≠0）
+│   ├── refreshInterval  # 全量刷新间隔（分钟，默认5，非法回退默认）
+│   └── autoSaveInterval # 自动保存兜底间隔（秒，默认60）
+└── players.json         # 玩家名称缓存（Map<String,String>，UUID→名字；脏标记落盘 + 原子写）
 ```
 
 ---
@@ -353,11 +367,16 @@ world/serverconfig/scorely/
 | **Phase 5.1** | stat 型配置扩展：StatTier 阶段奖励 + StatMatcher 计分配置（enabled/multiplier/cap/divisor/tiers，规则默认值 + 匹配项覆盖） | 1 天 |
 | **Phase 6** | 命令系统（score / rank / admin）✅ | 2 天 |
 | **Phase 7** | 事件集成（ServerTick 定时刷新循环）✅ | 1 天 |
-| **Phase 8** | ConfigManager + 自动保存 | 1 天 |
+| **Phase 8** | ConfigManager + 自动保存：首次启动生成默认 config.json（序列化 DefaultRules）、Gson 加载 + 校验（id 唯一/type 合法/数值非负/divisor≠0）、损坏回退默认 + `.bak` 保留、refreshInterval 接入调度器、players.json 名称缓存（String key）+ 脏标记落盘 + 原子写 | 1 天 |
+| **Phase 8.1** | 刷新策略收敛：全量重算仅定时任务 + `admin refresh` 触发；玩家进服 / `/scorely refresh` 走单玩家重算（只算对应玩家，不占全服配额） | 0.5 天 |
+| **Phase 8.2** | 热重载 + 展示接入：`admin reload` 校验通过才替换引擎（失败保留旧引擎报错）+ 立即重算 + 调度器间隔更新；rank/score 用名称缓存替换 UUID 短格式 | 0.5 天 |
 | **Phase 9** | 国际化（en_us + zh_cn） | 0.5 天 |
+| **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤、分榜排序语义、惩罚规则策略（受伤/死亡，独立分榜 + 计入总榜） | 1 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
 
-**总计**：约 13.5 天
+**总计**：约 15.5 天
+
+> **关于负积分（Phase 10）**：数据源与规则层已兼容——`damage_taken`/`deaths` 等统计项就在现有全量统计表中，规则 `multiplier` 可为负值（线性乘法不限符号）。需改动的仅在：① `ScoringEngine`/`ScoreCache` 的 `>0` 过滤（负分玩家被丢弃）；② 分榜排序方向（惩罚榜通常扣最多排最前，需支持升序）；③ `cap` 正向封顶语义（负向封顶另行定义）；④ 总榜合计天然兼容，仅过滤条件放开。
 
 ---
 
@@ -442,6 +461,7 @@ public class StatsReader {
 - 全量重算天然幂等（统计累计值 × 权重），无增量状态、无累积误差、故障自愈
 - 避免 Mixin 注入风险与版本敏感代码；未来“进度完成事件日志”功能需要实时感知时，再单独引入拦截器，与积分链路解耦
 - 查询命令永远读缓存快照，零计算开销
+- 触发源收敛（Phase 8.1）：全量重算仅由定时任务与 `/scorely admin refresh` 触发；玩家进服与 `/scorely refresh` 走单玩家粒度重算（只更新对应玩家缓存条目），不消耗全服配额
 
 ### D3: 积分规则 JSON 配置
 
