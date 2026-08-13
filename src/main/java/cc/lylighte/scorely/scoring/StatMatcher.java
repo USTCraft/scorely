@@ -1,10 +1,16 @@
 package cc.lylighte.scorely.scoring;
 
+import java.util.List;
+
 /**
- * 统计项匹配器（stat 型规则的匹配条件）。
+ * 统计项匹配器（stat 型规则的匹配条件与计分配置）。
  *
  * <p>匹配统一统计键 {@code "statType/statPath"}（如 {@code "minecraft:mined/minecraft:stone"}）：
  * {@code statType} 精确匹配，{@code statPath} 精确匹配或使用 {@code "*"} 通配全部。</p>
+ *
+ * <p>同时携带该统计项的计分配置（enabled / multiplier / cap / divisor / tiers）。
+ * 包装类型字段（{@code null}）表示未配置，计分时继承规则级默认值
+ * （见 {@link ScoringRule}）。</p>
  *
  * <p>纯 Java 实现，不依赖 Minecraft 类型。</p>
  */
@@ -19,12 +25,23 @@ public final class StatMatcher {
 	private String statType;
 	private String statPath;
 
+	/** 开关（null = 继承规则默认值）。 */
+	private Boolean enabled;
+	/** 线性计分倍率（null = 继承规则默认值）。 */
+	private Double multiplier;
+	/** 封顶值（统计值 ÷ divisor 后单位；null = 继承规则默认值）。 */
+	private Double cap;
+	/** 单位换算（null = 继承规则默认值）。 */
+	private Double divisor;
+	/** 阶段奖励档位（null = 继承规则默认值）。 */
+	private List<StatTier> tiers;
+
 	/** Gson 反序列化所需的无参构造。 */
 	public StatMatcher() {
 	}
 
 	/**
-	 * 直接构造。
+	 * 直接构造（仅匹配条件，计分配置留空）。
 	 *
 	 * @param statType 统计类型键（如 {@code "minecraft:mined"}）
 	 * @param statPath 统计项路径（如 {@code "minecraft:stone"} 或 {@code "*"}）
@@ -48,6 +65,46 @@ public final class StatMatcher {
 
 	public void setStatPath(String statPath) {
 		this.statPath = statPath;
+	}
+
+	public Boolean getEnabled() {
+		return enabled;
+	}
+
+	public void setEnabled(Boolean enabled) {
+		this.enabled = enabled;
+	}
+
+	public Double getMultiplier() {
+		return multiplier;
+	}
+
+	public void setMultiplier(Double multiplier) {
+		this.multiplier = multiplier;
+	}
+
+	public Double getCap() {
+		return cap;
+	}
+
+	public void setCap(Double cap) {
+		this.cap = cap;
+	}
+
+	public Double getDivisor() {
+		return divisor;
+	}
+
+	public void setDivisor(Double divisor) {
+		this.divisor = divisor;
+	}
+
+	public List<StatTier> getTiers() {
+		return tiers;
+	}
+
+	public void setTiers(List<StatTier> tiers) {
+		this.tiers = tiers;
 	}
 
 	/**

@@ -139,7 +139,7 @@ Scorely.java   ← 入口，注册各模块
 
 | 模式 | 数据源 | 计分方式 | 示例 |
 |---|---|---|---|
-| **stat（统计型）** | 统计累计值（内存/磁盘） | 累计：`统计值 × multiplier` | 挖 100 块石头 +100 分 |
+| **stat（统计型）** | 统计累计值（内存/磁盘） | 线性：`统计值 × multiplier`；或阶段：`tiers` 阈值累加（divisor 换算单位、cap 封顶） | 挖 100 块石头 +100 分；走 100km 得 30+40+50=120 分 |
 | **advancement（进度型）** | 进度完成状态（内存/磁盘） | 一次性：已完成的进度给固定分 | 完成“钻石！”+10 分 |
 
 ### 积分规则（ScoringRule）
@@ -150,9 +150,13 @@ public class ScoringRule {
     String displayName;              // "挖掘榜" | "战斗榜" | "进度榜"
     String type;                     // "stat" | "advancement"
 
-    // stat 型专用
+    // stat 型专用（规则级默认值，matcher 可逐项覆盖）
     List<StatMatcher> matchers;      // 匹配哪些统计项
-    double multiplier;               // 权重乘数
+    boolean enabled = true;          // 默认开关
+    double multiplier = 1.0;         // 线性计分倍率（tiers 非空时忽略）
+    double cap = 1000.0;             // 默认封顶 1000 分（显式配 0 = 不封顶）
+    double divisor = 1.0;            // 单位换算（cm→km 等）
+    List<StatTier> tiers;            // 阶段奖励（非空时按阶段计分）
 
     // advancement 型专用
     Map<String, Double> advancementValues;  // 进度ID → 分值
@@ -162,6 +166,17 @@ public class ScoringRule {
 public class StatMatcher {
     String statType;                 // "minecraft:mined"
     String statPath;                 // "minecraft:stone" 或 "*"（通配）
+    // 计分配置（null = 继承规则级默认值）
+    Boolean enabled;
+    Double multiplier;
+    Double cap;
+    Double divisor;
+    List<StatTier> tiers;
+}
+
+public class StatTier {
+    double threshold;                // 档位阈值（统计值 ÷ divisor 后的单位）
+    double value;                    // 达到该档位的奖励分（所有达到的档位累加）
 }
 ```
 
@@ -193,9 +208,20 @@ public class StatMatcher {
       "displayName": "探索榜",
       "type": "stat",
       "matchers": [
-        { "statType": "minecraft:custom", "statPath": "minecraft:walked_one_cm" }
-      ],
-      "multiplier": 0.001
+        {
+          "statType": "minecraft:custom",
+          "statPath": "minecraft:walked_one_cm",
+          "divisor": 100000,          // cm → km
+          "tiers": [                  // 阶段奖励：走 100km 得 30+40+50=120 分
+            { "threshold": 10, "value": 30 },
+            { "threshold": 40, "value": 40 },
+            { "threshold": 100, "value": 50 }
+          ],
+          "cap": 200                  // 超过 200km 不再计更高档
+        },
+        { "statType": "minecraft:custom", "statPath": "minecraft:fly_one_cm", "enabled": false },
+        { "statType": "minecraft:custom", "statPath": "minecraft:boat_one_cm", "multiplier": 0.0005 }
+      ]
     },
     {
       "id": "advancements",
@@ -322,6 +348,7 @@ world/serverconfig/scorely/
 | **Phase 3** | ScoringRule（stat 型）+ ScoringEngine（全量重算）+ ScoreCache | 2 天 |
 | **Phase 4** | 进度数据读取：AdvancementReader（磁盘解析 + 内存） | 1 天 |
 | **Phase 5** | ScoringRule（advancement 型）+ 总榜计算 | 1 天 |
+| **Phase 5.1** | stat 型配置扩展：StatTier 阶段奖励 + StatMatcher 计分配置（enabled/multiplier/cap/divisor/tiers，规则默认值 + 匹配项覆盖） | 1 天 |
 | **Phase 6** | 命令系统（score / rank / admin） | 2 天 |
 | **Phase 7** | 事件集成（ServerTick 定时刷新循环） | 1 天 |
 | **Phase 8** | ConfigManager + 自动保存 | 1 天 |
