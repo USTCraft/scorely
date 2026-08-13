@@ -3,6 +3,7 @@ package cc.lylighte.scorely.scoring;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -31,33 +32,47 @@ public final class ScoringEngine {
 	/**
 	 * 全量重算所有玩家的积分并更新缓存快照（幂等）。
 	 *
-	 * <p>仅处理 stat 型规则；advancement 型规则由 Phase 5 启用。</p>
+	 * <p>stat 型规则使用统计键值表，advancement 型规则使用已完成进度集合；
+	 * 两类数据均无的玩家自动忽略（不出现在榜单）。</p>
 	 *
-	 * @param statsByPlayer 玩家 → 统计键值表（键格式 {@code "statType/statPath"}，值累计数）。
-	 *                      统计为空的玩家自动忽略（不出现在榜单）。
+	 * @param statsByPlayer        玩家 → 统计键值表（键格式 {@code "statType/statPath"}，值累计数）
+	 * @param advancementsByPlayer 玩家 → 已完成的进度 ID 集合
 	 */
-	public void recalculateAll(Map<UUID, Map<String, Integer>> statsByPlayer) {
+	public void recalculateAll(Map<UUID, Map<String, Integer>> statsByPlayer, Map<UUID, Set<String>> advancementsByPlayer) {
 		Map<UUID, Map<String, Double>> scores = new HashMap<>();
 		if (statsByPlayer == null || statsByPlayer.isEmpty()) {
-			cache.rebuild(scores);
-			return;
+			if (advancementsByPlayer == null || advancementsByPlayer.isEmpty()) {
+				cache.rebuild(scores);
+				return;
+			}
 		}
-		for (Map.Entry<UUID, Map<String, Integer>> entry : statsByPlayer.entrySet()) {
-			if (entry.getKey() == null || entry.getValue() == null) {
+		Set<UUID> allPlayers = new java.util.HashSet<>();
+		if (statsByPlayer != null) {
+			allPlayers.addAll(statsByPlayer.keySet());
+		}
+		if (advancementsByPlayer != null) {
+			allPlayers.addAll(advancementsByPlayer.keySet());
+		}
+		for (UUID player : allPlayers) {
+			if (player == null) {
 				continue;
 			}
 			Map<String, Double> ruleScores = new HashMap<>();
 			for (ScoringRule rule : rules) {
-				if (!rule.isStatType()) {
+				double score;
+				if (rule.isStatType()) {
+					score = rule.scoreStat(statsByPlayer == null ? Map.of() : statsByPlayer.getOrDefault(player, Map.of()));
+				} else if (rule.isAdvancementType()) {
+					score = rule.scoreAdvancement(advancementsByPlayer == null ? Set.of() : advancementsByPlayer.getOrDefault(player, Set.of()));
+				} else {
 					continue;
 				}
-				double score = rule.scoreStat(entry.getValue());
 				if (score > 0) {
 					ruleScores.put(rule.getId(), score);
 				}
 			}
 			if (!ruleScores.isEmpty()) {
-				scores.put(entry.getKey(), ruleScores);
+				scores.put(player, ruleScores);
 			}
 		}
 		cache.rebuild(scores);

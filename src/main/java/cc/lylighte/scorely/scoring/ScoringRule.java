@@ -2,6 +2,7 @@ package cc.lylighte.scorely.scoring;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 积分规则定义。
@@ -9,7 +10,7 @@ import java.util.Map;
  * <p>两种计分模式（由 {@code type} 区分）：</p>
  * <ul>
  *   <li>{@code stat}（统计型）：匹配统计项，按 {@code 统计值 × multiplier} 累加计分；</li>
- *   <li>{@code advancement}（进度型）：按已完成进度一次性给分（字段预留，Phase 5 启用）。</li>
+ *   <li>{@code advancement}（进度型）：按已完成进度一次性给分。</li>
  * </ul>
  *
  * <p>字段与 {@code config.json} 的 rules 条目一一对应，由 Gson 反序列化（Phase 8 接入配置管理）。</p>
@@ -30,9 +31,9 @@ public final class ScoringRule {
 	private List<StatMatcher> matchers = List.of();
 	/** stat 型：权重乘数。 */
 	private double multiplier = 1.0;
-	/** advancement 型：进度 ID → 分值（Phase 5 启用）。 */
+	/** advancement 型：进度 ID → 分值。 */
 	private Map<String, Double> advancementValues = Map.of();
-	/** advancement 型：未单独配置的进度默认分值（Phase 5 启用）。 */
+	/** advancement 型：未单独配置的进度默认分值。 */
 	private double defaultValue;
 
 	/** Gson 反序列化所需的无参构造。 */
@@ -124,6 +125,31 @@ public final class ScoringRule {
 					total += entry.getValue() * multiplier;
 					break;
 				}
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * 按本规则计算玩家积分（advancement 型）。
+	 *
+	 * <p>遍历玩家已完成的进度：在 {@code advancementValues} 中单独配置的进度给对应分值，
+	 * 其余进度给 {@code defaultValue}（默认值为 0 时不加分）。</p>
+	 *
+	 * @param completedAdvancements 玩家已完成的进度 ID 集合
+	 * @return 积分（无完成进度或非 advancement 型返回 0）
+	 */
+	public double scoreAdvancement(Set<String> completedAdvancements) {
+		if (!isAdvancementType() || completedAdvancements == null || completedAdvancements.isEmpty()) {
+			return 0;
+		}
+		double total = 0;
+		for (String advancementId : completedAdvancements) {
+			Double value = advancementValues.get(advancementId);
+			if (value != null) {
+				total += value;
+			} else if (defaultValue > 0) {
+				total += defaultValue;
 			}
 		}
 		return total;
