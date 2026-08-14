@@ -20,17 +20,17 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.storage.LevelResource;
 
 /**
- * 积分刷新调度器（定时主循环 + 合并触发 + 周期配额 + 数据收集）。
+ * 积分刷新调度器（定时主循环 + 合并触发 + 数据收集）。
  *
  * <p>设计要点：</p>
  * <ul>
  *   <li><strong>定时主循环</strong>：每 {@code refreshIntervalMinutes} 分钟必刷一次（默认 5，
  *       可配置），保证数据最终一致；</li>
- *   <li><strong>合并触发</strong>：玩家加入等低价值触发只置 {@code pending} 标记，
- *       由 tick 循环统一消费——多人同时进服只刷一次；</li>
- *   <li><strong>周期配额</strong>：每个刷新周期内额外刷新（玩家加入 + 手动 refresh）最多
- *       {@link #MAX_EXTRA_REFRESHES} 次，防止反复进出/连点命令导致频繁全量重算；
- *       定时主刷新执行时配额清零（周期轮转）；</li>
+ *   <li><strong>合并触发</strong>：低价值触发只置 {@code pending} 标记，由 tick 循环统一消费——
+ *       多人同时进服只刷一次（Phase 8.3 起无配额限制，仅作批处理合并）；</li>
+ *   <li><strong>全量重算入口约束</strong>（Phase 8.3）：非定时全量重算仅由管理命令触发
+ *       （{@code admin refresh} / {@code admin reload}），普通玩家只能走单玩家路径
+ *       {@link #refreshPlayer}，不触发全服重算；</li>
  *   <li><strong>磁盘优化</strong>：在线玩家走内存读取（CompatHelper），离线玩家走
  *       {@link PlayerDataCache} 指纹缓存（mtime + size 未变化不重读文件），
  *       低频（每 {@link #RECONCILE_PERIODS} 个周期）全扫目录补充新玩家。</li>
@@ -42,8 +42,6 @@ public final class RefreshScheduler {
 
 	/** 每秒 tick 数。 */
 	private static final long TICKS_PER_SECOND = 20L;
-	/** 每周期额外刷新次数上限（固定常量，暂不配置化）。 */
-	private static final int MAX_EXTRA_REFRESHES = 3;
 	/** 每 N 个周期全扫一次 stats 目录，补充新增离线玩家。 */
 	private static final int RECONCILE_PERIODS = 10;
 	/** 离线玩家统计文件名后缀。 */
@@ -61,8 +59,6 @@ public final class RefreshScheduler {
 	private long nextScheduledTick;
 	/** 合并触发标记（玩家加入等置位）。 */
 	private boolean pendingRefresh;
-	/** 本周期已使用的额外刷新次数。 */
-	private int extraRefreshesUsed;
 	/** 已执行的周期数（用于低频目录 reconcile）。 */
 	private int periodCount;
 
@@ -79,7 +75,6 @@ public final class RefreshScheduler {
 	public void onServerStarted(MinecraftServer server) {
 		this.server = server;
 		this.tickCounter = 0;
-		this.extraRefreshesUsed = 0;
 		this.periodCount = 0;
 		this.pendingRefresh = false;
 		reconcileKnownPlayers();
@@ -98,10 +93,9 @@ public final class RefreshScheduler {
 		}
 		tickCounter++;
 
-		// 定时主刷新（到点必刷，配额清零，周期轮转）
+		// 定时主刷新（到点必刷，周期轮转）
 		if (tickCounter >= nextScheduledTick) {
 			pendingRefresh = false;
-			extraRefreshesUsed = 0;
 			periodCount++;
 			collectAndRecalculate();
 			nextScheduledTick = tickCounter + intervalTicks();
@@ -111,10 +105,9 @@ public final class RefreshScheduler {
 			return;
 		}
 
-		// 合并触发（配额内消费）
-		if (pendingRefresh && extraRefreshesUsed < MAX_EXTRA_REFRESHES) {
+		// 合并触发消费
+		if (pendingRefresh) {
 			pendingRefresh = false;
-			extraRefreshesUsed++;
 			collectAndRecalculate();
 		}
 	}
@@ -124,7 +117,7 @@ public final class RefreshScheduler {
 	 *
 	 * <p>Phase 8.1 起玩家进服已改走 {@link #refreshPlayer} 单玩家路径，本方法暂无调用方；
 	 * 保留 pending 合并机制作为未来低价值触发源（如批量事件）的公共入口：
-	 * 只置标记，由 tick 循环在配额内统一消费。</p>
+	 * 只置标记，由 tick 循环统一消费（批处理合并，无配额限制）。</p>
 	 */
 	public void requestRefresh() {
 		pendingRefresh = true;
@@ -133,7 +126,7 @@ public final class RefreshScheduler {
 	/**
 	 * 单玩家刷新（Phase 8.1：进服 / {@code /scorely refresh} 路径）。
 	 *
-	 * <p>只重算指定玩家的积分并更新缓存单条——<strong>不消耗全服额外刷新配额</strong>、
+	 * <p>只重算指定玩家的积分并更新缓存单条——<strong>不触发全服重算</strong>、
 	 * 不置 pending 标记。在线玩家走内存读取，离线玩家走指纹缓存读取（与全量路径一致）。</p>
 	 *
 	 * @param uuid 玩家 UUID
@@ -167,39 +160,19 @@ public final class RefreshScheduler {
 	}
 
 	/**
-	 * 手动刷新（{@code /scorely admin refresh} 调用）。
+	 * 手动刷新（{@code /scorely admin refresh} 调用，Phase 8.3 起无配额限制）。
 	 *
-	 * <p>直接消费配额执行；配额用尽时拒绝并给出提示。</p>
+	 * <p>直接执行全量重算；全量重算入口仅限管理命令（OP 门禁），普通玩家无法触发。</p>
 	 *
-	 * @return 执行结果（失败时附原因）
+	 * @return 执行结果（失败时附原因，如服务器未就绪）
 	 */
 	public Result refreshNow() {
 		if (server == null) {
 			return Result.failure("服务器未就绪，无法刷新");
 		}
-		if (extraRefreshesUsed >= MAX_EXTRA_REFRESHES) {
-			return Result.failure("本轮额外刷新配额已用完（" + MAX_EXTRA_REFRESHES + "/"
-					+ MAX_EXTRA_REFRESHES + "），等待下轮定时刷新");
-		}
-		pendingRefresh = false;
-		extraRefreshesUsed++;
-		collectAndRecalculate();
-		return Result.success("积分已刷新（本轮额外 " + extraRefreshesUsed + "/"
-				+ MAX_EXTRA_REFRESHES + "）");
-	}
-
-	/**
-	 * 立即全量重算（管理场景：配置热重载后让新规则即时生效）。
-	 *
-	 * <p>与 {@link #refreshNow} 不同：<strong>不消耗额外刷新配额</strong>、无失败分支
-	 * （服务器未就绪时静默跳过）——仅由管理命令在重载成功后调用。</p>
-	 */
-	public void recalculateNow() {
-		if (server == null) {
-			return;
-		}
 		pendingRefresh = false;
 		collectAndRecalculate();
+		return Result.success("积分已刷新");
 	}
 
 	/** 服务器停止：释放服务器引用。 */

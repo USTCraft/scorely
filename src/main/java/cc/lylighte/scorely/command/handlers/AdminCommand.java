@@ -59,7 +59,12 @@ public final class AdminCommand {
 		}
 		engine.setRules(configManager.getRules());
 		scheduler.setRefreshIntervalMinutes(configManager.getRefreshIntervalMinutes());
-		scheduler.recalculateNow();
+		Result refresh = scheduler.refreshNow();
+		if (!refresh.isSuccess()) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(
+				" " + result.getMessage() + "，但" + refresh.getMessage() + "（将随下次定时刷新生效）")));
+			return 1;
+		}
 		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(
 			" " + result.getMessage() + "，已应用并立即重算")), false);
 		return 1;
