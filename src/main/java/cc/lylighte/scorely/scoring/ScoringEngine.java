@@ -70,25 +70,62 @@ public final class ScoringEngine {
 			if (player == null) {
 				continue;
 			}
-			Map<String, Double> ruleScores = new HashMap<>();
-			for (ScoringRule rule : rules) {
-				double score;
-				if (rule.isStatType()) {
-					score = rule.scoreStat(statsByPlayer == null ? Map.of() : statsByPlayer.getOrDefault(player, Map.of()));
-				} else if (rule.isAdvancementType()) {
-					score = rule.scoreAdvancement(advancementsByPlayer == null ? Set.of() : advancementsByPlayer.getOrDefault(player, Set.of()));
-				} else {
-					continue;
-				}
-				if (score > 0) {
-					ruleScores.put(rule.getId(), score);
-				}
-			}
+			Map<String, Double> ruleScores = computeScores(
+					statsByPlayer == null ? Map.of() : statsByPlayer.getOrDefault(player, Map.of()),
+					advancementsByPlayer == null ? Set.of() : advancementsByPlayer.getOrDefault(player, Set.of()));
 			if (!ruleScores.isEmpty()) {
 				scores.put(player, ruleScores);
 			}
 		}
 		cache.rebuild(scores);
+	}
+
+	/**
+	 * 单玩家重算（Phase 8.1：进服 / {@code /scorely refresh} 路径，不触发全量重算）。
+	 *
+	 * <p>只计算指定玩家的积分并更新缓存单条；无数据（或全部规则不命中）的玩家从缓存移除，
+	 * 语义与全量重算一致。本方法不修改全服快照的其他条目。</p>
+	 *
+	 * @param player      玩家 UUID
+	 * @param stats       玩家统计键值表（可为空表）
+	 * @param advancements 玩家已完成的进度 ID 集合（可为空集合）
+	 */
+	public void recalculatePlayer(UUID player, Map<String, Integer> stats, Set<String> advancements) {
+		if (player == null) {
+			return;
+		}
+		Map<String, Double> ruleScores = computeScores(
+				stats == null ? Map.of() : stats,
+				advancements == null ? Set.of() : advancements);
+		cache.updatePlayer(player, ruleScores);
+	}
+
+	/**
+	 * 按当前规则集计算一个玩家的各规则积分（公共算分逻辑）。
+	 *
+	 * <p>与 {@code recalculateAll} 内层循环共用：stat 型规则使用统计键值表，
+	 * advancement 型规则使用已完成进度集合；不命中或非正分的规则不入表。</p>
+	 *
+	 * @param stats       玩家统计键值表（键格式 {@code "statType/statPath"}，值累计数）
+	 * @param advancements 玩家已完成的进度 ID 集合
+	 * @return 规则 ID → 积分（空表表示无任何可计分数据）
+	 */
+	private Map<String, Double> computeScores(Map<String, Integer> stats, Set<String> advancements) {
+		Map<String, Double> ruleScores = new HashMap<>();
+		for (ScoringRule rule : rules) {
+			double score;
+			if (rule.isStatType()) {
+				score = rule.scoreStat(stats);
+			} else if (rule.isAdvancementType()) {
+				score = rule.scoreAdvancement(advancements);
+			} else {
+				continue;
+			}
+			if (score > 0) {
+				ruleScores.put(rule.getId(), score);
+			}
+		}
+		return ruleScores;
 	}
 
 	/** 积分缓存（排行榜查询快照）。 */

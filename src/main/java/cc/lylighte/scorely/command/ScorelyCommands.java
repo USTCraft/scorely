@@ -8,6 +8,7 @@ import com.mojang.brigadier.context.CommandContext;
 
 import cc.lylighte.scorely.command.handlers.AdminCommand;
 import cc.lylighte.scorely.command.handlers.RankCommand;
+import cc.lylighte.scorely.command.handlers.RefreshCommand;
 import cc.lylighte.scorely.command.handlers.ScoreCommand;
 import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
@@ -28,6 +29,7 @@ import net.minecraft.server.level.ServerPlayer;
  * <ul>
  *   <li>{@code /scorely} —— 帮助信息</li>
  *   <li>{@code /scorely score [rule]} —— 查看自己的积分（可指定规则）</li>
+ *   <li>{@code /scorely refresh} —— 刷新自己的积分（单玩家重算）</li>
  *   <li>{@code /scorely rank [rule] [page]} —— 排行榜（总榜 / 指定规则，可翻页）</li>
  *   <li>{@code /scorely admin reload|refresh|rule list} —— 管理（OP）</li>
  * </ul>
@@ -67,6 +69,7 @@ public final class ScorelyCommands {
 		dispatcher.register(Commands.literal("scorely")
 			.executes(ScorelyCommands::help)
 			.then(ScoreCommand.build(engine))
+			.then(RefreshCommand.build(scheduler))
 			.then(RankCommand.build(engine))
 			.then(AdminCommand.build(engine, scheduler)));
 	}
@@ -78,6 +81,7 @@ public final class ScorelyCommands {
 		sb.append(ChatHelper.prefix()).append('\n');
 		sb.append(ChatHelper.separator("命令帮助")).append('\n');
 		sb.append("  /scorely score [rule]        查看自己的积分\n");
+		sb.append("  /scorely refresh             刷新自己的积分\n");
 		sb.append("  /scorely rank [rule] [page]  排行榜（总榜/指定规则，可翻页）\n");
 		sb.append("  /scorely admin reload        重载配置 (OP)\n");
 		sb.append("  /scorely admin refresh       强制刷新积分 (OP)\n");

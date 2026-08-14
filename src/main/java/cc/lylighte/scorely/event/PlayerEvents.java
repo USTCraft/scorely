@@ -9,8 +9,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
  *
  * <p>职责：玩家登录完成后：</p>
  * <ul>
- *   <li>请求一次积分刷新——只置 {@code pending} 标记，由 {@link RefreshScheduler}
- *       在配额内统一执行（合并多人同时进服、防刷）；</li>
+ *   <li>触发单玩家积分刷新（Phase 8.1：只算该玩家，不消耗全服配额）；</li>
  *   <li>记录玩家显示名到 {@link ConfigManager} 名称缓存（离线展示用，脏标记落盘）。</li>
  * </ul>
  */
@@ -27,7 +26,7 @@ public final class PlayerEvents {
 	 */
 	public static void register(RefreshScheduler scheduler, ConfigManager configManager) {
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			scheduler.requestRefresh();
+			scheduler.refreshPlayer(handler.getPlayer().getUUID());
 			configManager.updatePlayerName(
 					handler.getPlayer().getUUID(),
 					handler.getPlayer().getName().getString());

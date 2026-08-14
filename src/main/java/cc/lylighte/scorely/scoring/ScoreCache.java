@@ -41,6 +41,28 @@ public final class ScoreCache {
 		playerScores = Map.copyOf(copy);
 	}
 
+	/**
+	 * 单玩家积分更新（Phase 8.1：单玩家刷新路径，原子替换整个快照副本）。
+	 *
+	 * <p>语义与全量重算一致：空分数表 = 从缓存移除该玩家（无统计数据的玩家不出现在榜单）。
+	 * 服务器线程约束下单条写入频率低（进服 / 手动 refresh），copy-on-write 开销可忽略。</p>
+	 *
+	 * @param player     玩家 UUID
+	 * @param ruleScores 该玩家的规则 → 分数表（内部做不可变拷贝；空表则移除该玩家）
+	 */
+	public void updatePlayer(UUID player, Map<String, Double> ruleScores) {
+		if (player == null) {
+			return;
+		}
+		Map<UUID, Map<String, Double>> copy = new HashMap<>(playerScores);
+		if (ruleScores == null || ruleScores.isEmpty()) {
+			copy.remove(player);
+		} else {
+			copy.put(player, Map.copyOf(ruleScores));
+		}
+		playerScores = Map.copyOf(copy);
+	}
+
 	/** 全部已计入积分的玩家 UUID。 */
 	public Set<UUID> getKnownPlayers() {
 		return playerScores.keySet();

@@ -119,9 +119,51 @@ public final class RefreshScheduler {
 		}
 	}
 
-	/** 请求一次额外刷新（玩家加入等触发；实际执行受配额限制）。 */
+	/**
+	 * 请求一次额外刷新（低价值批量触发的预留入口）。
+	 *
+	 * <p>Phase 8.1 起玩家进服已改走 {@link #refreshPlayer} 单玩家路径，本方法暂无调用方；
+	 * 保留 pending 合并机制作为未来低价值触发源（如批量事件）的公共入口：
+	 * 只置标记，由 tick 循环在配额内统一消费。</p>
+	 */
 	public void requestRefresh() {
 		pendingRefresh = true;
+	}
+
+	/**
+	 * 单玩家刷新（Phase 8.1：进服 / {@code /scorely refresh} 路径）。
+	 *
+	 * <p>只重算指定玩家的积分并更新缓存单条——<strong>不消耗全服额外刷新配额</strong>、
+	 * 不置 pending 标记。在线玩家走内存读取，离线玩家走指纹缓存读取（与全量路径一致）。</p>
+	 *
+	 * @param uuid 玩家 UUID
+	 */
+	public void refreshPlayer(UUID uuid) {
+		MinecraftServer s = this.server;
+		if (s == null || uuid == null) {
+			return;
+		}
+
+		ServerPlayer online = s.getPlayerList().getPlayer(uuid);
+		if (online != null) {
+			// 在线：内存读取（零磁盘）
+			dataCache.addKnownPlayer(uuid);
+			engine.recalculatePlayer(uuid,
+					CompatHelper.readPlayerStats(online),
+					CompatHelper.readCompletedAdvancements(online));
+			return;
+		}
+
+		// 离线：指纹缓存读取（文件未变化不重读）
+		try {
+			Path statsDir = s.getWorldPath(LevelResource.PLAYER_STATS_DIR);
+			Path advancementsDir = s.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR);
+			dataCache.addKnownPlayer(uuid);
+			dataCache.refresh(uuid, statsDir, advancementsDir);
+			engine.recalculatePlayer(uuid, dataCache.getStats(uuid), dataCache.getAdvancements(uuid));
+		} catch (IOException e) {
+			Scorely.LOGGER.warn("读取玩家数据失败 uuid={}: {}", uuid, e.toString());
+		}
 	}
 
 	/**
