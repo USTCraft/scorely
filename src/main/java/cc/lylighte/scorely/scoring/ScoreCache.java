@@ -20,6 +20,8 @@ public final class ScoreCache {
 
 	/** 玩家 → 规则ID → 分数（volatile 保证写线程原子替换对读线程可见）。 */
 	private volatile Map<UUID, Map<String, Double>> playerScores = Map.of();
+	/** 规则ID → 总榜权重（Phase 12；空表或缺省条目按 1 计，兼容既有缓存）。 */
+	private volatile Map<String, Double> ruleWeights = Map.of();
 
 	/**
 	 * 全量重建缓存（原子替换整个快照）。
@@ -69,6 +71,33 @@ public final class ScoreCache {
 	}
 
 	/**
+	 * 设置总榜权重表（规则 ID → weight，Phase 12 总榜加权和）。
+	 *
+	 * <p>缺省 0/空 = 1，兼容既有配置；{@code admin reload} 替换规则后由引擎同步调用。</p>
+	 *
+	 * @param weights 规则 ID → 权重（null 视为空表）
+	 */
+	public void setRuleWeights(Map<String, Double> weights) {
+		if (weights == null || weights.isEmpty()) {
+			ruleWeights = Map.of();
+			return;
+		}
+		Map<String, Double> copy = new HashMap<>(weights.size());
+		for (Map.Entry<String, Double> entry : weights.entrySet()) {
+			if (entry.getKey() != null && entry.getValue() != null) {
+				copy.put(entry.getKey(), entry.getValue());
+			}
+		}
+		ruleWeights = Map.copyOf(copy);
+	}
+
+	/** 规则权重（缺省 0/空 = 1，兼容既有配置）。 */
+	private double weightOf(String ruleId) {
+		Double weight = ruleWeights.get(ruleId);
+		return weight == null || weight <= 0 ? 1.0 : weight;
+	}
+
+	/**
 	 * 获取玩家在某规则下的积分。
 	 *
 	 * @param player 玩家 UUID
@@ -85,10 +114,10 @@ public final class ScoreCache {
 	}
 
 	/**
-	 * 获取玩家总分（所有规则之和）。
+	 * 获取玩家总分（各分榜积分的加权和，Phase 12；默认权重 1）。
 	 *
 	 * @param player 玩家 UUID
-	 * @return 总分（玩家不存在时返回 0）
+	 * @return 总分（玩家不存在时返回 0；惩罚榜负分直接计入）
 	 */
 	public double getPlayerTotalScore(UUID player) {
 		Map<String, Double> ruleScores = playerScores.get(player);
@@ -96,8 +125,8 @@ public final class ScoreCache {
 			return 0;
 		}
 		double total = 0;
-		for (double score : ruleScores.values()) {
-			total += score;
+		for (Map.Entry<String, Double> entry : ruleScores.entrySet()) {
+			total += entry.getValue() * weightOf(entry.getKey());
 		}
 		return total;
 	}
@@ -131,7 +160,8 @@ public final class ScoreCache {
 	/**
 	 * 获取总榜（按总分降序；同分按 UUID 升序保证确定性）。
 	 *
-	 * <p>Phase 10 起放开正分过滤：总分为负（仅惩罚积分）的玩家同样入榜，仅排除零分。</p>
+	 * <p>Phase 10 起放开正分过滤：总分为负（仅惩罚积分）的玩家同样入榜，仅排除零分；
+	 * Phase 12：总分 = 各分榜积分 × 权重的加权和（缺省权重 1）。</p>
 	 *
 	 * @param limit 返回条数上限（{@code <= 0} 表示不限制）
 	 * @return 排行榜条目
@@ -140,8 +170,8 @@ public final class ScoreCache {
 		List<ScoreEntry> entries = new ArrayList<>();
 		for (Map.Entry<UUID, Map<String, Double>> entry : playerScores.entrySet()) {
 			double total = 0;
-			for (double score : entry.getValue().values()) {
-				total += score;
+			for (Map.Entry<String, Double> ruleScore : entry.getValue().entrySet()) {
+				total += ruleScore.getValue() * weightOf(ruleScore.getKey());
 			}
 			if (total != 0) {
 				entries.add(new ScoreEntry(entry.getKey(), total));

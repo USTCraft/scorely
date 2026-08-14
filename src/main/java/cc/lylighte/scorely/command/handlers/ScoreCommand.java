@@ -34,6 +34,7 @@ public final class ScoreCommand {
 		return Commands.literal("score")
 			.executes(ctx -> showAll(ctx.getSource(), engine))
 			.then(Commands.argument("rule", StringArgumentType.word())
+				.suggests(ScorelyCommands.suggestRules(engine))
 				.executes(ctx -> showRule(ctx.getSource(), engine, StringArgumentType.getString(ctx, "rule"))));
 	}
 

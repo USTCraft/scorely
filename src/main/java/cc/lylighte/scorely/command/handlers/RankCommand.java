@@ -39,6 +39,7 @@ public final class RankCommand {
 		return Commands.literal("rank")
 			.executes(ctx -> showTotal(ctx.getSource(), engine))
 			.then(Commands.argument("rule", StringArgumentType.word())
+				.suggests(ScorelyCommands.suggestRules(engine))
 				.executes(ctx -> showRule(ctx.getSource(), engine, StringArgumentType.getString(ctx, "rule"), 1))
 				.then(Commands.argument("page", IntegerArgumentType.integer(1))
 					.executes(ctx -> showRule(ctx.getSource(), engine, StringArgumentType.getString(ctx, "rule"),

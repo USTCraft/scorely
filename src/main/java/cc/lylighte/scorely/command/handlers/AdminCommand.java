@@ -1,5 +1,6 @@
 package cc.lylighte.scorely.command.handlers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -19,7 +20,9 @@ import cc.lylighte.scorely.util.Result;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.ServerOpListEntry;
 import net.minecraft.server.permissions.Permissions;
 
 /**
@@ -151,6 +154,29 @@ public final class AdminCommand {
 				.append(Lang.format(lang, "cmd.admin.rule.default_value", ChatHelper.formatNumber(rule.getDefaultValue())))
 				.append(" ")
 				.append(Lang.format(lang, "cmd.admin.rule.special", rule.getAdvancementValues().size()));
+			// Phase 12：帧分层展示（task/goal/challenge）
+			if (!rule.getFrameValues().isEmpty()) {
+				sb.append(" ").append(ChatHelper.AQUA)
+					.append(Lang.format(lang, "cmd.admin.rule.frames", rule.getFrameValues().size()))
+					.append(ChatHelper.RESET);
+			}
+		}
+
+		// Phase 12：maxScore 展示（正值=满分，负值=封底）
+		if (rule.getMaxScore() > 0) {
+			sb.append(" ").append(ChatHelper.GOLD)
+				.append(Lang.format(lang, "cmd.admin.rule.max_score", ChatHelper.formatNumber(rule.getMaxScore())))
+				.append(ChatHelper.RESET);
+		} else if (rule.getMaxScore() < 0) {
+			sb.append(" ").append(ChatHelper.GOLD)
+				.append(Lang.format(lang, "cmd.admin.rule.max_score_floor", ChatHelper.formatNumber(rule.getMaxScore())))
+				.append(ChatHelper.RESET);
+		}
+		// Phase 12：非默认权重展示（默认 1 不显示）
+		if (rule.getWeight() > 0 && rule.getWeight() != 1.0) {
+			sb.append(" ").append(ChatHelper.GRAY)
+				.append(Lang.format(lang, "cmd.admin.rule.weight", ChatHelper.formatNumber(rule.getWeight())))
+				.append(ChatHelper.RESET);
 		}
 
 		if (!rule.isEnabled()) {
@@ -205,34 +231,69 @@ public final class AdminCommand {
 		return 1;
 	}
 
-	/** 列出打星名单（名称 + UUID）。 */
+	/**
+	 * 列出打星名单（名称 + UUID），分两段：手动名单（config starPlayers）
+	 * 与 OP 自动识别（starOps 开启时经 ops.json 判定，排除已在手动名单者）。
+	 */
 	private static int starList(CommandSourceStack source, ConfigManager configManager) {
 		String lang = ScorelyCommands.langOf(source);
 		if (configManager == null) {
 			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.config_unavailable"))));
 			return 0;
 		}
-		Set<UUID> stars = configManager.getStarPlayers();
+		MinecraftServer server = source.getServer();
+		Set<UUID> manual = configManager.getStarPlayers();
+
+		// OP 自动识别（starOps 开启）：枚举 ops.json 条目，排除已在手动名单者
+		List<UUID> autoOps = new ArrayList<>();
+		if (configManager.isStarOpsEnabled() && server != null) {
+			for (ServerOpListEntry entry : server.getPlayerList().getOps().getEntries()) {
+				if (entry.getUser() != null && entry.getUser().id() != null
+					&& !manual.contains(entry.getUser().id())) {
+					autoOps.add(entry.getUser().id());
+				}
+			}
+		}
+
+		int total = manual.size() + autoOps.size();
 		StringBuilder sb = new StringBuilder();
 		sb.append(ChatHelper.prefix()).append('\n');
-		sb.append(ChatHelper.separator(Lang.format(lang, "cmd.admin.star.title", stars.size()))).append('\n');
-		if (stars.isEmpty()) {
+		sb.append(ChatHelper.separator(Lang.format(lang, "cmd.admin.star.title", total))).append('\n');
+		if (total == 0) {
 			sb.append("  ").append(ChatHelper.GRAY).append(Lang.format(lang, "cmd.admin.star.empty")).append(ChatHelper.RESET);
 		} else {
-			for (UUID uuid : stars) {
-				String name = ScorelyCommands.playerName(source.getServer(), uuid);
-				// 打星标记符号可经 lang 覆盖表自定义（Phase 11）
-				String starText = Lang.format(lang, "cmd.rank.star");
-				if (!starText.isEmpty()) {
-					sb.append("  ").append(ChatHelper.YELLOW).append(starText).append(ChatHelper.RESET).append(" ");
+			if (!manual.isEmpty()) {
+				sb.append("  ").append(ChatHelper.GRAY)
+					.append(Lang.format(lang, "cmd.admin.star.manual", manual.size()))
+					.append(ChatHelper.RESET).append('\n');
+				for (UUID uuid : manual) {
+					appendStarEntry(sb, lang, server, uuid);
 				}
-				sb.append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
-					.append("  ").append(ChatHelper.GRAY).append(uuid).append(ChatHelper.RESET).append('\n');
+			}
+			if (!autoOps.isEmpty()) {
+				sb.append("  ").append(ChatHelper.GRAY)
+					.append(Lang.format(lang, "cmd.admin.star.auto", autoOps.size()))
+					.append(ChatHelper.RESET).append('\n');
+				for (UUID uuid : autoOps) {
+					appendStarEntry(sb, lang, server, uuid);
+				}
 			}
 			sb.setLength(sb.length() - 1); // 去掉末尾换行
 		}
 		source.sendSuccess(() -> Component.literal(sb.toString()), false);
 		return 1;
+	}
+
+	/** 追加一条打星条目：标记符号 + 名字 + UUID。 */
+	private static void appendStarEntry(StringBuilder sb, String lang, MinecraftServer server, UUID uuid) {
+		String name = ScorelyCommands.playerName(server, uuid);
+		// 打星标记符号可经 lang 覆盖表自定义（Phase 11）
+		String starText = Lang.format(lang, "cmd.rank.star");
+		if (!starText.isEmpty()) {
+			sb.append("  ").append(ChatHelper.YELLOW).append(starText).append(ChatHelper.RESET).append(" ");
+		}
+		sb.append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
+			.append("  ").append(ChatHelper.GRAY).append(uuid).append(ChatHelper.RESET).append('\n');
 	}
 
 	/** 解析玩家 UUID：在线玩家按真实名字命中，离线回退名称缓存反查。 */

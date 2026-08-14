@@ -29,8 +29,8 @@ public final class ScorelyConfig {
 
 	/** 服务器默认语言（Phase 9 国际化；缺省 zh_cn）。 */
 	private String language = Lang.DEFAULT_LANGUAGE;
-	/** 语言覆盖表（Phase 9.1；缺省 null = 不覆盖，仅用内置语言表）。 */
-	private Map<String, Map<String, String>> lang;
+	/** 语言覆盖表（Phase 9.1；缺省空表 = 不覆盖，仅用内置语言表；模板输出占位）。 */
+	private Map<String, Map<String, String>> lang = Map.of();
 	/** 刷新周期（分钟），默认 5。 */
 	private int refreshIntervalMinutes = DefaultRules.REFRESH_INTERVAL_MINUTES;
 	/** 打星玩家 UUID 名单（Phase 11；缺省空表，照常计分、榜单带 ★ 标记）。 */

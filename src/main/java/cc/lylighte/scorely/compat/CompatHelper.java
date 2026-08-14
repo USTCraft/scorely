@@ -1,6 +1,9 @@
 package cc.lylighte.scorely.compat;
 
+import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.AdvancementType;
+import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -94,6 +97,34 @@ public final class CompatHelper {
 			if (advancements.getOrStartProgress(holder).isDone()) {
 				result.add(holder.id().toString());
 			}
+		}
+		return result;
+	}
+
+	/**
+	 * 构建进度帧映射（进度 ID → 帧类型，Phase 12 帧分层计分）。
+	 *
+	 * <p>遍历服务器实时进度注册表（{@code ServerAdvancementManager}，含 mod 进度），
+	 * 取 {@code DisplayInfo.getType()} 的序列化名（task/goal/challenge）；无 display
+	 * 的进度不收录（帧映射缺失时计分回退 defaultValue）。</p>
+	 *
+	 * @param server 服务器实例
+	 * @return 进度 ID → 帧类型（如 {@code "minecraft:story/mine_stone" → "task"}）
+	 */
+	public static Map<String, String> readAdvancementFrames(MinecraftServer server) {
+		Map<String, String> result = new HashMap<>();
+		if (server == null) {
+			return result;
+		}
+		ServerAdvancementManager manager = server.getAdvancements();
+		for (AdvancementHolder holder : manager.getAllAdvancements()) {
+			Advancement advancement = holder.value();
+			if (advancement == null || advancement.display().isEmpty()) {
+				continue;
+			}
+			DisplayInfo display = advancement.display().get();
+			AdvancementType type = display.getType();
+			result.put(holder.id().toString(), type.getSerializedName());
 		}
 		return result;
 	}

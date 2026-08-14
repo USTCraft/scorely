@@ -18,6 +18,14 @@ import java.util.Set;
  * 匹配项（{@link StatMatcher}）可逐项覆盖——规则配置了 {@code tiers} 时按阶段计分，
  * 否则按 {@code multiplier} 线性计分。</p>
  *
+ * <p>Phase 12（预置榜单重做）新增：</p>
+ * <ul>
+ *   <li>{@code maxScore} —— 榜级显式满分：正值上限截断（min(自然, maxScore)），
+ *       负值封底截断（max(自然, maxScore)），0 = 不限（兼容既有配置）；</li>
+ *   <li>{@code weight} —— 总榜权重（缺省 0 = 1，总榜 = Σ 分榜积分 × weight）；</li>
+ *   <li>{@code frameValues} —— 进度型帧分层（advancementValues &gt; frameValues &gt; defaultValue）。</li>
+ * </ul>
+ *
  * <p>字段与 {@code config.json} 的 rules 条目一一对应，由 Gson 反序列化（Phase 8 接入配置管理）。</p>
  *
  * <p>纯 Java 实现，不依赖 Minecraft 类型。</p>
@@ -54,6 +62,12 @@ public final class ScoringRule {
 	private Map<String, Double> advancementValues = Map.of();
 	/** advancement 型：未单独配置的进度默认分值。 */
 	private double defaultValue;
+	/** 榜级显式满分（&gt;0 上限截断；&lt;0 封底截断；0 = 不限，兼容既有配置）。 */
+	private double maxScore;
+	/** 总榜权重（缺省 0 = 1，兼容既有配置；总榜 = Σ 分榜积分 × weight）。 */
+	private double weight;
+	/** advancement 型：帧类型（task/goal/challenge）→ 分值（advancementValues &gt; frameValues &gt; defaultValue）。 */
+	private Map<String, Double> frameValues = Map.of();
 
 	/** Gson 反序列化所需的无参构造。 */
 	public ScoringRule() {
@@ -155,6 +169,30 @@ public final class ScoringRule {
 		this.defaultValue = defaultValue;
 	}
 
+	public double getMaxScore() {
+		return maxScore;
+	}
+
+	public void setMaxScore(double maxScore) {
+		this.maxScore = maxScore;
+	}
+
+	public double getWeight() {
+		return weight;
+	}
+
+	public void setWeight(double weight) {
+		this.weight = weight;
+	}
+
+	public Map<String, Double> getFrameValues() {
+		return frameValues;
+	}
+
+	public void setFrameValues(Map<String, Double> frameValues) {
+		this.frameValues = frameValues == null ? Map.of() : frameValues;
+	}
+
 	/** 是否为统计型规则。 */
 	public boolean isStatType() {
 		return TYPE_STAT.equals(type);
@@ -168,8 +206,11 @@ public final class ScoringRule {
 	/**
 	 * 按本规则计算玩家积分（stat 型）。
 	 *
-	 * <p>每个命中的统计项独立计分后求和：匹配项关闭（enabled=false）则跳过且不阻塞后续匹配项；
+	 * <p>每个命中的统计项独立计分后求和：匹配项关闭（enabled=false）命中 = 该统计项显式豁免
+	 * （黑名单语义，跳过整个条目，优先于后续通配——如惩罚榜豁免 {@code killed_by/minecraft:player}）；
 	 * 第一个命中且启用的匹配项负责计分。计分方式见 {@link #scoreMatcher}。</p>
+	 *
+	 * <p>Phase 12：返回前按 {@code maxScore} 截断（正值上限 / 负值封底 / 0 不限）。</p>
 	 *
 	 * @param stats 玩家统计键值表（统一键格式 {@code "statType/statPath"}）
 	 * @return 积分（无命中或非 stat 型返回 0）
@@ -179,19 +220,21 @@ public final class ScoringRule {
 			return 0;
 		}
 		double total = 0;
+		entryLoop:
 		for (Map.Entry<String, Integer> entry : stats.entrySet()) {
 			for (StatMatcher matcher : matchers) {
 				if (!matcher.matches(entry.getKey())) {
 					continue;
 				}
 				if (!effectiveEnabled(matcher)) {
-					continue;
+					// 豁免命中：该统计项整体跳过，不参与后续任何匹配项计分
+					continue entryLoop;
 				}
 				total += scoreMatcher(matcher, entry.getValue());
 				break;
 			}
 		}
-		return total;
+		return clamp(total);
 	}
 
 	/**
@@ -246,13 +289,18 @@ public final class ScoringRule {
 	/**
 	 * 按本规则计算玩家积分（advancement 型）。
 	 *
-	 * <p>遍历玩家已完成的进度：在 {@code advancementValues} 中单独配置的进度给对应分值，
-	 * 其余进度给 {@code defaultValue}（默认值为 0 时不加分）。</p>
+	 * <p>遍历玩家已完成的进度，分值优先级（Phase 12 帧分层）：</p>
+	 * <ol>
+	 *   <li>{@code advancementValues} 中单独配置的进度 → 对应分值；</li>
+	 *   <li>{@code frameValues} 按 {@code advancementFrames} 帧映射查帧 → 帧分值；</li>
+	 *   <li>其余进度给 {@code defaultValue}（默认值为 0 时不加分）。</li>
+	 * </ol>
 	 *
 	 * @param completedAdvancements 玩家已完成的进度 ID 集合
-	 * @return 积分（无完成进度或非 advancement 型返回 0）
+	 * @param advancementFrames     进度 ID → 帧类型（task/goal/challenge；可为 null，帧未命中回退 defaultValue）
+	 * @return 积分（无完成进度或非 advancement 型返回 0；按 maxScore 截断）
 	 */
-	public double scoreAdvancement(Set<String> completedAdvancements) {
+	public double scoreAdvancement(Set<String> completedAdvancements, Map<String, String> advancementFrames) {
 		if (!isAdvancementType() || completedAdvancements == null || completedAdvancements.isEmpty()) {
 			return 0;
 		}
@@ -261,10 +309,34 @@ public final class ScoringRule {
 			Double value = advancementValues.get(advancementId);
 			if (value != null) {
 				total += value;
-			} else if (defaultValue > 0) {
+				continue;
+			}
+			if (advancementFrames != null && !frameValues.isEmpty()) {
+				String frame = advancementFrames.get(advancementId);
+				if (frame != null && frameValues.containsKey(frame)) {
+					total += frameValues.get(frame);
+					continue;
+				}
+			}
+			if (defaultValue > 0) {
 				total += defaultValue;
 			}
 		}
-		return total;
+		return clamp(total);
+	}
+
+	/**
+	 * 按 {@code maxScore} 截断：正值 = 上限（min），负值 = 封底（max），0 = 不限。
+	 *
+	 * <p>负值语义用于惩罚榜封底（score = max(自然, -800)），防自杀刷分/无限叠加滥用。</p>
+	 */
+	private double clamp(double score) {
+		if (maxScore > 0) {
+			return Math.min(score, maxScore);
+		}
+		if (maxScore < 0) {
+			return Math.max(score, maxScore);
+		}
+		return score;
 	}
 }

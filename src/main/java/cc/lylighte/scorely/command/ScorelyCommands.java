@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 
 import cc.lylighte.scorely.command.handlers.AdminCommand;
 import cc.lylighte.scorely.command.handlers.RankCommand;
@@ -21,6 +22,7 @@ import cc.lylighte.scorely.util.Lang;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -172,5 +174,17 @@ public final class ScorelyCommands {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * rule 参数补全建议（返回当前引擎全部规则 ID，供 rank/score 参数提示）。
+	 *
+	 * @param targetEngine 目标引擎（可能为 null，返回空建议）
+	 * @return 建议提供器
+	 */
+	public static SuggestionProvider<CommandSourceStack> suggestRules(ScoringEngine targetEngine) {
+		return (ctx, builder) -> SharedSuggestionProvider.suggest(
+			targetEngine == null ? List.of() : targetEngine.getRules().stream().map(ScoringRule::getId).toList(),
+			builder);
 	}
 }

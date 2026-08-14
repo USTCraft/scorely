@@ -394,6 +394,20 @@ public final class ConfigManager {
 			if (!isFiniteNonNegative(rule.getDefaultValue())) {
 				return Result.failure("config.error.default_value", rule.getId());
 			}
+			// Phase 12：maxScore 必须为有限数值（正=上限、负=封底、0=不限）
+			if (!Double.isFinite(rule.getMaxScore())) {
+				return Result.failure("config.error.max_score", rule.getId());
+			}
+			// Phase 12：总榜权重必须为非负有限数值（缺省 0 = 1）
+			if (!isFiniteNonNegative(rule.getWeight())) {
+				return Result.failure("config.error.weight", rule.getId());
+			}
+			// Phase 12：frameValues 键非空、值有限非负
+			for (Map.Entry<String, Double> frame : rule.getFrameValues().entrySet()) {
+				if (isBlank(frame.getKey()) || !isFiniteNonNegative(frame.getValue())) {
+					return Result.failure("config.error.frame_value", rule.getId());
+				}
+			}
 			for (StatMatcher matcher : rule.getMatchers()) {
 				if (matcher == null) {
 					return Result.failure("config.error.matcher_null", rule.getId());

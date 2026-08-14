@@ -20,6 +20,8 @@ public final class ScoringEngine {
 
 	/** 积分规则（volatile 支持 Phase 8 配置加载后原子替换；读时快照引用）。 */
 	private volatile List<ScoringRule> rules;
+	/** 进度 ID → 帧类型（Phase 12 帧分层；服务端启动后构建，见 CompatHelper#readAdvancementFrames）。 */
+	private volatile Map<String, String> advancementFrames = Map.of();
 	private final ScoreCache cache;
 
 	/**
@@ -34,12 +36,37 @@ public final class ScoringEngine {
 	 * 原子替换积分规则（Phase 8 配置加载时调用）。
 	 *
 	 * <p>命令树在入口初始化时已捕获本引擎引用，因此热更新采用"改规则而非重建引擎"：
-	 * 下次全量重算（定时/手动）自然使用新规则；替换后不立即重算，由调度器按节奏执行。</p>
+	 * 下次全量重算（定时/手动）自然使用新规则；替换后不立即重算，由调度器按节奏执行。
+	 * Phase 12：同步刷新缓存的总榜权重表（缺省 0 = 1）。</p>
 	 *
 	 * @param newRules 新规则列表（null 视为空列表，副本持有）
 	 */
 	public void setRules(List<ScoringRule> newRules) {
 		this.rules = newRules == null ? List.of() : List.copyOf(newRules);
+		cache.setRuleWeights(collectWeights(this.rules));
+	}
+
+	/**
+	 * 设置进度帧映射（进度 ID → task/goal/challenge，Phase 12 帧分层计分）。
+	 *
+	 * <p>服务端启动后由 {@link cc.lylighte.scorely.event.RefreshScheduler} 构建并调用一次；
+	 * 帧映射为纯字符串表，引擎保持纯 Java。</p>
+	 *
+	 * @param frames 进度 ID → 帧类型（null 视为空表，帧分层计分退化为 defaultValue）
+	 */
+	public void setAdvancementFrames(Map<String, String> frames) {
+		this.advancementFrames = frames == null || frames.isEmpty() ? Map.of() : Map.copyOf(frames);
+	}
+
+	/** 从规则列表提取总榜权重表（规则 ID → weight）。 */
+	private static Map<String, Double> collectWeights(List<ScoringRule> rules) {
+		Map<String, Double> weights = new HashMap<>();
+		for (ScoringRule rule : rules) {
+			if (rule != null && rule.getId() != null && rule.getWeight() > 0) {
+				weights.put(rule.getId(), rule.getWeight());
+			}
+		}
+		return weights;
 	}
 
 	/**
@@ -118,7 +145,7 @@ public final class ScoringEngine {
 			if (rule.isStatType()) {
 				score = rule.scoreStat(stats);
 			} else if (rule.isAdvancementType()) {
-				score = rule.scoreAdvancement(advancements);
+				score = rule.scoreAdvancement(advancements, advancementFrames);
 			} else {
 				continue;
 			}

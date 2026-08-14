@@ -71,17 +71,39 @@ public final class RefreshScheduler {
 		this.refreshIntervalMinutes = Math.max(1, minutes);
 	}
 
-	/** 服务器启动：全扫目录登记已知玩家 → 立即首刷 → 设定定时节奏。 */
+	/** 服务器启动：构建进度帧映射 → 全扫目录登记已知玩家 → 立即首刷 → 设定定时节奏。 */
 	public void onServerStarted(MinecraftServer server) {
 		this.server = server;
 		this.tickCounter = 0;
 		this.periodCount = 0;
 		this.pendingRefresh = false;
+		// Phase 12：构建进度帧映射（服务端实时注册表，含 mod 进度）并输出分层统计日志（运行时校准依据）
+		Map<String, String> frames = CompatHelper.readAdvancementFrames(server);
+		engine.setAdvancementFrames(frames);
+		logFrameCounts(frames);
 		reconcileKnownPlayers();
 		collectAndRecalculate();
 		this.nextScheduledTick = intervalTicks();
 		Scorely.LOGGER.info("Scorely initial recalculation done, next scheduled refresh in {} min", refreshIntervalMinutes);
 	}
+
+	/** 输出进度帧分层统计日志（task/goal/challenge 数量，SCORING_PLAN 2.2 校准）。 */
+	private void logFrameCounts(Map<String, String> frames) {
+		if (frames.isEmpty()) {
+			return;
+		}
+		Map<String, Integer> counts = new HashMap<>();
+		for (String frame : frames.values()) {
+			counts.merge(frame, 1, Integer::sum);
+		}
+		StringBuilder sb = new StringBuilder();
+		counts.keySet().stream().sorted().forEach(k -> sb.append(k).append('=').append(counts.get(k)).append(", "));
+		if (!sb.isEmpty()) {
+			sb.setLength(sb.length() - 2);
+		}
+		Scorely.LOGGER.info("Scorely advancement frames: total {}, {}", frames.size(), sb);
+	}
+
 
 	/**
 	 * 服务器 tick（{@code EndTick.onEndTick(MinecraftServer)} 回调）：
