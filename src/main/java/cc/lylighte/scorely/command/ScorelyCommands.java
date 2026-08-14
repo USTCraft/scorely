@@ -10,6 +10,7 @@ import cc.lylighte.scorely.command.handlers.AdminCommand;
 import cc.lylighte.scorely.command.handlers.RankCommand;
 import cc.lylighte.scorely.command.handlers.RefreshCommand;
 import cc.lylighte.scorely.command.handlers.ScoreCommand;
+import cc.lylighte.scorely.config.ConfigManager;
 import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
@@ -45,6 +46,9 @@ public final class ScorelyCommands {
 	/** 刷新调度器（Phase 7 事件层提供；可能为 null，admin refresh 需先注入）。 */
 	private static RefreshScheduler scheduler;
 
+	/** 配置管理（Phase 8.2：热重载 + 名称缓存展示；可能为 null）。 */
+	private static ConfigManager configManager;
+
 	private ScorelyCommands() {
 	}
 
@@ -56,6 +60,11 @@ public final class ScorelyCommands {
 	/** 注入刷新调度器（入口初始化时调用）。 */
 	public static void setScheduler(RefreshScheduler newScheduler) {
 		scheduler = newScheduler;
+	}
+
+	/** 注入配置管理（入口初始化时调用）。 */
+	public static void setConfigManager(ConfigManager newConfigManager) {
+		configManager = newConfigManager;
 	}
 
 	/**
@@ -71,7 +80,7 @@ public final class ScorelyCommands {
 			.then(ScoreCommand.build(engine))
 			.then(RefreshCommand.build(scheduler))
 			.then(RankCommand.build(engine))
-			.then(AdminCommand.build(engine, scheduler)));
+			.then(AdminCommand.build(engine, scheduler, configManager)));
 	}
 
 	/** {@code /scorely} —— 帮助信息。 */
@@ -91,8 +100,8 @@ public final class ScorelyCommands {
 	}
 
 	/**
-	 * 解析玩家显示名：在线玩家取真实名字，离线玩家显示 UUID 短格式
-	 * （前 8 位；Phase 8 接入 players.json 名称缓存后改为缓存名字）。
+	 * 解析玩家显示名：在线玩家取真实名字，离线玩家查名称缓存，
+	 * 缓存未记录时显示 UUID 短格式（前 8 位）。
 	 *
 	 * @param server 服务器实例（可能为 null）
 	 * @param uuid   玩家 UUID
@@ -103,6 +112,12 @@ public final class ScorelyCommands {
 			ServerPlayer player = server.getPlayerList().getPlayer(uuid);
 			if (player != null) {
 				return player.getName().getString();
+			}
+		}
+		if (configManager != null) {
+			String cached = configManager.getPlayerName(uuid);
+			if (cached != null) {
+				return cached;
 			}
 		}
 		return uuid.toString().substring(0, 8);

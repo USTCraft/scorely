@@ -16,6 +16,7 @@ import cc.lylighte.scorely.scoring.DefaultRules;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.scoring.StatMatcher;
 import cc.lylighte.scorely.scoring.StatTier;
+import cc.lylighte.scorely.util.Result;
 
 import com.google.gson.reflect.TypeToken;
 
@@ -114,6 +115,43 @@ public final class ConfigManager {
 					configPath, e.toString());
 		}
 		loadPlayerNames();
+	}
+
+	/**
+	 * 热重载配置（{@code /scorely admin reload} 调用）。
+	 *
+	 * <p>与启动加载语义不同：任何失败（文件缺失/解析失败/校验失败）<strong>不修改当前生效配置</strong>，
+	 * 不生成备份（文件保持原样），由命令层提示错误；全部校验通过后才原子替换规则与间隔。</p>
+	 *
+	 * @return 成功（携带摘要）或失败（携带原因）；调用方需自行应用 {@link #getRules()} 并触发重算
+	 */
+	public Result reload() {
+		Path configPath = configDir.resolve(CONFIG_FILE);
+		if (!Config.exists(configPath)) {
+			return Result.failure("配置文件不存在: " + configPath
+					+ "（若损坏后已被备份为 .bak，可改名恢复后重试）");
+		}
+		try {
+			ScorelyConfig config = Config.load(configPath, ScorelyConfig.class);
+			String error = validate(config);
+			if (error != null) {
+				return Result.failure("配置校验失败: " + error);
+			}
+			List<ScoringRule> newRules = List.copyOf(config.getRules());
+			int newInterval = config.getRefreshIntervalMinutes() > 0
+					? config.getRefreshIntervalMinutes()
+					: DefaultRules.REFRESH_INTERVAL_MINUTES;
+			// 全部校验通过后才替换状态（失败保持旧配置生效）
+			this.rules = newRules;
+			this.refreshIntervalMinutes = newInterval;
+			Scorely.LOGGER.info("Scorely 配置热重载成功：{} 条规则，刷新周期 {} 分钟",
+					rules.size(), refreshIntervalMinutes);
+			return Result.success("配置已重载（" + rules.size() + " 条规则，刷新周期 "
+					+ refreshIntervalMinutes + " 分钟）");
+		} catch (Exception e) {
+			Scorely.LOGGER.warn("Scorely 配置热重载失败（保持当前配置生效）: {}", e.toString());
+			return Result.failure("配置解析失败: " + e.getMessage());
+		}
 	}
 
 	/** 积分规则（不可变）。 */

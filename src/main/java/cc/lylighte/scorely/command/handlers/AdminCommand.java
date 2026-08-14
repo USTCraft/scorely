@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
+import cc.lylighte.scorely.config.ConfigManager;
 import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
@@ -19,7 +20,7 @@ import net.minecraft.server.permissions.Permissions;
  * {@code /scorely admin} —— 管理命令（需 OP 权限）。
  *
  * <ul>
- *   <li>{@code /scorely admin reload} —— 重载配置（Phase 8 接入 ConfigManager）；</li>
+ *   <li>{@code /scorely admin reload} —— 热重载配置（校验通过才生效，失败保留旧配置）；</li>
  *   <li>{@code /scorely admin refresh} —— 强制全量刷新积分（受周期配额限制）；</li>
  *   <li>{@code /scorely admin rule list} —— 列出所有积分规则及其计分配置。</li>
  * </ul>
@@ -29,11 +30,11 @@ public final class AdminCommand {
 	private AdminCommand() {
 	}
 
-	public static LiteralArgumentBuilder<CommandSourceStack> build(ScoringEngine engine, RefreshScheduler scheduler) {
+	public static LiteralArgumentBuilder<CommandSourceStack> build(ScoringEngine engine, RefreshScheduler scheduler, ConfigManager configManager) {
 		return Commands.literal("admin")
 			.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_MODERATOR))
 			.then(Commands.literal("reload")
-				.executes(ctx -> reload(ctx.getSource())))
+				.executes(ctx -> reload(ctx.getSource(), configManager, engine, scheduler)))
 			.then(Commands.literal("refresh")
 				.executes(ctx -> refresh(ctx.getSource(), scheduler)))
 			.then(Commands.literal("rule")
@@ -41,10 +42,26 @@ public final class AdminCommand {
 					.executes(ctx -> ruleList(ctx.getSource(), engine))));
 	}
 
-	/** 重载配置（Phase 8 实现）。 */
-	private static int reload(CommandSourceStack source) {
+	/**
+	 * 热重载配置：校验通过才替换引擎并立即重算；失败保留旧配置并提示原因。
+	 */
+	private static int reload(CommandSourceStack source, ConfigManager configManager, ScoringEngine engine, RefreshScheduler scheduler) {
+		if (configManager == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" 配置服务未就绪")));
+			return 0;
+		}
+		Result result = configManager.reload();
+		if (!result.isSuccess()) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(
+				" " + ChatHelper.RED + result.getMessage() + ChatHelper.RESET
+					+ "（当前配置保持生效）")));
+			return 0;
+		}
+		engine.setRules(configManager.getRules());
+		scheduler.setRefreshIntervalMinutes(configManager.getRefreshIntervalMinutes());
+		scheduler.recalculateNow();
 		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(
-			" 配置重载将在 Phase 8 接入（ConfigManager + serverconfig）")), false);
+			" " + result.getMessage() + "，已应用并立即重算")), false);
 		return 1;
 	}
 

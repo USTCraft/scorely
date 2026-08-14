@@ -32,6 +32,7 @@ public class Scorely implements ModInitializer {
 		// Phase 7：事件层（定时刷新循环 + 合并触发）
 		RefreshScheduler scheduler = new RefreshScheduler(engine);
 		ScorelyCommands.setScheduler(scheduler);
+		ScorelyCommands.setConfigManager(configManager);
 		ServerEvents.register(scheduler, configManager, engine);
 		PlayerEvents.register(scheduler, configManager);
 		// Phase 6：命令系统

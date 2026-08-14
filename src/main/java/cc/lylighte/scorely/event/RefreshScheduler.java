@@ -188,6 +188,20 @@ public final class RefreshScheduler {
 				+ MAX_EXTRA_REFRESHES + "）");
 	}
 
+	/**
+	 * 立即全量重算（管理场景：配置热重载后让新规则即时生效）。
+	 *
+	 * <p>与 {@link #refreshNow} 不同：<strong>不消耗额外刷新配额</strong>、无失败分支
+	 * （服务器未就绪时静默跳过）——仅由管理命令在重载成功后调用。</p>
+	 */
+	public void recalculateNow() {
+		if (server == null) {
+			return;
+		}
+		pendingRefresh = false;
+		collectAndRecalculate();
+	}
+
 	/** 服务器停止：释放服务器引用。 */
 	public void onServerStopped() {
 		this.server = null;
