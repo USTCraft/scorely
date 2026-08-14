@@ -246,7 +246,12 @@ public final class ConfigManager {
 					&& !ScoringRule.TYPE_ADVANCEMENT.equals(rule.getType())) {
 				return Result.failure("config.error.type_invalid", rule.getId(), rule.getType());
 			}
-			if (!isFiniteNonNegative(rule.getMultiplier())) {
+			String sort = rule.getSort();
+			if (!ScoringRule.SORT_ASC.equals(sort) && !ScoringRule.SORT_DESC.equals(sort)) {
+				return Result.failure("config.error.sort_invalid", rule.getId());
+			}
+			// Phase 10：multiplier 允许负值（惩罚规则扣分），仅拒绝非有限数
+			if (!Double.isFinite(rule.getMultiplier())) {
 				return Result.failure("config.error.multiplier", rule.getId());
 			}
 			if (!isFiniteNonNegative(rule.getCap())) {
@@ -271,7 +276,8 @@ public final class ConfigManager {
 				if (tier == null) {
 					return Result.failure("config.error.tier_null", rule.getId());
 				}
-				if (!isFiniteNonNegative(tier.getThreshold()) || !isFiniteNonNegative(tier.getValue())) {
+				// Phase 10：档位分值允许负值（惩罚档位扣分），阈值仍必须非负
+				if (!isFiniteNonNegative(tier.getThreshold()) || !Double.isFinite(tier.getValue())) {
 					return Result.failure("config.error.tier_value", rule.getId());
 				}
 			}
@@ -307,7 +313,7 @@ public final class ConfigManager {
 		if (matcher.getCap() != null && !isFiniteNonNegative(matcher.getCap())) {
 			return Result.failure("config.error.matcher_cap", rule.getId());
 		}
-		if (matcher.getMultiplier() != null && !isFiniteNonNegative(matcher.getMultiplier())) {
+		if (matcher.getMultiplier() != null && !Double.isFinite(matcher.getMultiplier())) {
 			return Result.failure("config.error.matcher_multiplier", rule.getId());
 		}
 		if (matcher.getTiers() != null) {
@@ -315,7 +321,7 @@ public final class ConfigManager {
 				if (tier == null) {
 					return Result.failure("config.error.matcher_tier_null", rule.getId());
 				}
-				if (!isFiniteNonNegative(tier.getThreshold()) || !isFiniteNonNegative(tier.getValue())) {
+				if (!isFiniteNonNegative(tier.getThreshold()) || !Double.isFinite(tier.getValue())) {
 					return Result.failure("config.error.matcher_tier_value", rule.getId());
 				}
 			}

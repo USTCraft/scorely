@@ -151,6 +151,7 @@ public class ScoringRule {
     String id;                       // "mining" | "combat" | "advancements"
     String displayName;              // "挖掘榜" | "战斗榜" | "进度榜"
     String type;                     // "stat" | "advancement"
+    String sort;                     // "asc" | "desc"（默认 desc；惩罚榜配 "asc" 扣最多排最前）
 
     // stat 型专用（规则级默认值，matcher 可逐项覆盖）
     List<StatMatcher> matchers;      // 匹配哪些统计项
@@ -235,6 +236,16 @@ public class StatTier {
         "minecraft:end/kill_dragon": 200.0,
         "minecraft:nether/all_effects": 150.0
       }
+    },
+    {
+      "id": "penalty",               // 惩罚榜（Phase 10 示例，默认不预置）
+      "displayName": "scorely.rule.penalty",
+      "type": "stat",
+      "sort": "asc",                 // 扣最多排最前
+      "matchers": [
+        { "statType": "minecraft:custom", "statPath": "minecraft:deaths", "multiplier": -10 }
+      ],
+      "cap": 50                      // 扣分封底：|分| ≤ 500（零新增语义，复用 |积分| 上限）
     }
   ],
   "lang": {
@@ -382,7 +393,7 @@ world/serverconfig/scorely/
 | **Phase 8.3** | 刷新频率约束简化：移除 admin 刷新配额（MAX_EXTRA_REFRESHES），全量重算仅受入口权限门禁约束（OP），不再限频；`admin reload` 统一走 `refreshNow()`（服务器未就绪时才延迟到下次定时）✅ | 0.2 天 |
 | **Phase 9** | 国际化（en_us + zh_cn）✅：服务端语言表（`util/Lang` + `assets/scorely/lang/*.json`，回退链 目标→en_us→key）、per-player 语言（classTweaker 读 `ServerPlayer.language`，控制台用 config `language` 字段，默认 zh_cn）、Result/命令层/规则名全量 key 化、config 校验错误 19 键、modmenu 描述翻译键 | 0.5 天 |
 | **Phase 9.1** | 语言覆盖表：config.json 可选 `lang` 字段（翻译键 → {语言码 → 文本}），查表顺序 覆盖(目标语言) → 内置(目标语言) → 覆盖(en_us) → 内置(en_us) → key 原文；服主可新增自定义键（displayName 填键名 → 自定义规则名多语言自适应）或覆盖内置键（命令话术定制）；volatile 引用替换（reload 失败保持旧覆盖）；校验新增 2 个错误键（lang 键非空/文本非空）✅ | 0.3 天 |
-| **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤、分榜排序语义、惩罚规则策略（受伤/死亡，独立分榜 + 计入总榜） | 1 天 |
+| **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤（负分玩家入榜）、规则新增 `sort` 字段（asc/desc，默认 desc，惩罚榜配 asc 扣最多排最前）、校验放开 multiplier/tier value 非负限制（threshold 仍非负）、负向封顶复用现有 cap（|积分|上限，零新增语义）、总榜仅放开过滤 ✅ | 1 天 |
 | **Phase 11** | 创造/旁观模式玩家排除（**待决策，暂缓**）：数据收集阶段按游戏模式过滤，被排除玩家不进收集 map（全量重算自然移除），切换回生存自动恢复；方案已定（运行时判定 + 低频同步，零持久化），语义待决策后实施 | 0.5 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
 
@@ -390,7 +401,7 @@ world/serverconfig/scorely/
 
 > **关于创造/旁观排除（Phase 11，待决策，暂缓）**：背景——创造模式下 advancements 与飞行统计（fly_one_cm）仍会累计，管理员会污染进度榜/探索榜。技术方案已明确：排除判定放收集层（被排除玩家不进入收集 map → 全量重算自然移除 → 榜单消失；恢复生存 → 自动回来），纯运行时判定（JOIN 记录 + 低频 tick 同步模式切换，零持久化自愈，不碰 NBT/playerdata）。待决策点：① 排除范围是否含旁观模式；② 判定粒度（按当前/最后已知模式实时排除，切回生存立即恢复）；③ 是否需配置化（如排除名单覆写）。
 
-> **关于负积分（Phase 10）**：数据源与规则层已兼容——`damage_taken`/`deaths` 等统计项就在现有全量统计表中，规则 `multiplier` 可为负值（线性乘法不限符号）。需改动的仅在：① `ScoringEngine`/`ScoreCache` 的 `>0` 过滤（负分玩家被丢弃）；② 分榜排序方向（惩罚榜通常扣最多排最前，需支持升序）；③ `cap` 正向封顶语义（负向封顶另行定义）；④ 总榜合计天然兼容，仅过滤条件放开。
+> **关于负积分（Phase 10）**：候选研究结论——核心惩罚项 `deaths`（死亡次数，语义最清晰、无法刷）与 `damage_taken`（累计受伤 HP，细粒度），均已在现有全量统计表中（`minecraft:custom` 类型，26.2 已验证常量存在）；细分项（`deaths_by_*`/`killed_by/*`）语义更好但需 StatMatcher 前缀通配支持，且与 `deaths` 同死亡事件双计（配置须二选一）；`fall_one_cm`（摔落已含于 damage_taken）/`drop`（正常整理背包会被误罚）不建议默认。实现面：① 过滤放开——`ScoringEngine.computeScores`/`ScoreCache`（getLeaderboard/getTotalLeaderboard）的 `>0` 改 `!=0`；② 排序——规则新增 `sort` 字段（asc/desc，默认 desc 零回归），惩罚榜配 asc（扣最多排最前），总榜保持降序（净分排序）；③ 校验放开——multiplier/matcher multiplier/tier value 允许负值（仅拒非有限，threshold 仍非负）；④ **负向封顶零改动**——现行 cap 语义实为"|积分|上限"（线性截断统计值再乘负 multiplier、tiers 截断 adjusted），负分场景天然给出扣分封底（如 cap=50、multiplier=-10 → 扣分 ≥ -500），无需新语义；⑤ 命令层零改动（`ChatHelper.formatNumber` 千分位负号天然支持）。惩罚榜**默认不预置**（预置榜单结构重做待规划），config 示例给出死亡榜/受伤榜模板。
 
 > **关于客户端增强（远期规划，待规划，不实施）**：当前为纯服务端模组，原版客户端零改动即可使用；远期增强必须保持**原版端兼容**。分层思路——第一层（推荐优先，零客户端改动）：原版协议级展示，scoreboard 侧边栏 Top 榜（服务端自动推送更新）、actionbar/title 积分通知、bossbar 实时积分、聊天 hover/click 富文本（组件级，纯原版客户端同样渲染）；第二层：服务器资源包携带 lang 包，使 translatable 组件在纯原版客户端显示本地化名称/描述；第三层（可选客户端 mod，需原版降级兼容）：HUD 常驻显示、自定义 Screen 排行榜（即展示方案二）。约束：所有功能以服务端为主，客户端为可选增强层，未装 mod 时自动退化为第一层。
 

@@ -103,27 +103,35 @@ public final class ScoreCache {
 	}
 
 	/**
-	 * 获取某规则下的排行榜（按积分降序；同分按 UUID 升序保证确定性）。
+	 * 获取某规则下的排行榜（按规则配置的排序方向；同分按 UUID 升序保证确定性）。
 	 *
-	 * @param ruleId 规则 ID
-	 * @param limit  返回条数上限（{@code <= 0} 表示不限制）
+	 * <p>Phase 10 起放开正分过滤：负分（惩罚规则）玩家同样入榜，仅排除零分。</p>
+	 *
+	 * @param ruleId    规则 ID
+	 * @param limit     返回条数上限（{@code <= 0} 表示不限制）
+	 * @param ascending {@code true} 升序（惩罚榜扣最多在前）；{@code false} 降序（默认）
 	 * @return 排行榜条目
 	 */
-	public List<ScoreEntry> getLeaderboard(String ruleId, int limit) {
+	public List<ScoreEntry> getLeaderboard(String ruleId, int limit, boolean ascending) {
 		List<ScoreEntry> entries = new ArrayList<>();
 		for (Map.Entry<UUID, Map<String, Double>> entry : playerScores.entrySet()) {
 			Double score = entry.getValue().get(ruleId);
-			if (score != null && score > 0) {
+			if (score != null && score != 0) {
 				entries.add(new ScoreEntry(entry.getKey(), score));
 			}
 		}
-		entries.sort(Comparator.comparingDouble(ScoreEntry::score).reversed()
-			.thenComparing(ScoreEntry::player));
+		Comparator<ScoreEntry> byScore = Comparator.comparingDouble(ScoreEntry::score);
+		if (!ascending) {
+			byScore = byScore.reversed();
+		}
+		entries.sort(byScore.thenComparing(ScoreEntry::player));
 		return limit > 0 && entries.size() > limit ? entries.subList(0, limit) : entries;
 	}
 
 	/**
 	 * 获取总榜（按总分降序；同分按 UUID 升序保证确定性）。
+	 *
+	 * <p>Phase 10 起放开正分过滤：总分为负（仅惩罚积分）的玩家同样入榜，仅排除零分。</p>
 	 *
 	 * @param limit 返回条数上限（{@code <= 0} 表示不限制）
 	 * @return 排行榜条目
@@ -135,7 +143,7 @@ public final class ScoreCache {
 			for (double score : entry.getValue().values()) {
 				total += score;
 			}
-			if (total > 0) {
+			if (total != 0) {
 				entries.add(new ScoreEntry(entry.getKey(), total));
 			}
 		}

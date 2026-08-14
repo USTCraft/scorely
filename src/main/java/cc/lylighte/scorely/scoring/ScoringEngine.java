@@ -104,7 +104,8 @@ public final class ScoringEngine {
 	 * 按当前规则集计算一个玩家的各规则积分（公共算分逻辑）。
 	 *
 	 * <p>与 {@code recalculateAll} 内层循环共用：stat 型规则使用统计键值表，
-	 * advancement 型规则使用已完成进度集合；不命中或非正分的规则不入表。</p>
+	 * advancement 型规则使用已完成进度集合；不命中或零分的规则不入表
+	 * （Phase 10 起保留负分——惩罚规则可产生负积分）。</p>
 	 *
 	 * @param stats       玩家统计键值表（键格式 {@code "statType/statPath"}，值累计数）
 	 * @param advancements 玩家已完成的进度 ID 集合
@@ -121,7 +122,7 @@ public final class ScoringEngine {
 			} else {
 				continue;
 			}
-			if (score > 0) {
+			if (score != 0) {
 				ruleScores.put(rule.getId(), score);
 			}
 		}
@@ -166,12 +167,25 @@ public final class ScoringEngine {
 	/**
 	 * 获取某规则下的排行榜（读缓存快照）。
 	 *
+	 * <p>排序方向随规则配置（Phase 10 起）：{@code sort=asc} 升序（惩罚榜扣最多在前），
+	 * 缺省降序（正榜得分最多在前）。</p>
+	 *
 	 * @param ruleId 规则 ID
 	 * @param limit  返回条数上限（{@code <= 0} 表示不限制）
-	 * @return 排行榜条目，按积分降序
+	 * @return 排行榜条目，按规则排序方向排列
 	 */
 	public List<ScoreEntry> getLeaderboard(String ruleId, int limit) {
-		return cache.getLeaderboard(ruleId, limit);
+		return cache.getLeaderboard(ruleId, limit, isAscending(ruleId));
+	}
+
+	/** 规则是否配置为升序（找不到规则时按降序处理）。 */
+	private boolean isAscending(String ruleId) {
+		for (ScoringRule rule : rules) {
+			if (rule != null && ruleId != null && ruleId.equals(rule.getId())) {
+				return ScoringRule.SORT_ASC.equals(rule.getSort());
+			}
+		}
+		return false;
 	}
 
 	/**

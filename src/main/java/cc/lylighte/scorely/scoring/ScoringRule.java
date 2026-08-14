@@ -28,10 +28,16 @@ public final class ScoringRule {
 	public static final String TYPE_STAT = "stat";
 	/** 计分模式：进度型。 */
 	public static final String TYPE_ADVANCEMENT = "advancement";
+	/** 排行榜排序：升序（惩罚榜：扣最多排最前）。 */
+	public static final String SORT_ASC = "asc";
+	/** 排行榜排序：降序（默认，正榜：得分最多排最前）。 */
+	public static final String SORT_DESC = "desc";
 
 	private String id;
 	private String displayName;
 	private String type;
+	/** 排行榜排序方向（asc/desc，缺省 desc；Phase 10 惩罚榜配 asc）。 */
+	private String sort = SORT_DESC;
 	/** stat 型：匹配条件与计分配置列表。 */
 	private List<StatMatcher> matchers = List.of();
 	/** stat 型默认值：开关。 */
@@ -75,6 +81,14 @@ public final class ScoringRule {
 
 	public void setType(String type) {
 		this.type = type;
+	}
+
+	public String getSort() {
+		return sort;
+	}
+
+	public void setSort(String sort) {
+		this.sort = sort == null ? SORT_DESC : sort;
 	}
 
 	public List<StatMatcher> getMatchers() {
