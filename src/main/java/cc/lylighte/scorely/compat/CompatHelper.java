@@ -3,10 +3,13 @@ package cc.lylighte.scorely.compat;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.ServerAdvancementManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
+import net.minecraft.server.players.ServerOpListEntry;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
 import net.minecraft.stats.StatsCounter;
@@ -15,6 +18,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 版本差异封装层（唯一允许直接引用 Minecraft 内部类的入口之一）。
@@ -106,5 +110,32 @@ public final class CompatHelper {
 	 */
 	public static String languageOf(ServerPlayer player) {
 		return player == null ? null : player.language;
+	}
+
+	/**
+	 * 判定玩家是否为 OP（Phase 11 打星机制，ops.json 持久判定，离线也生效）。
+	 *
+	 * <p>26.2：{@code PlayerList#isOp(NameAndId)} 直接读持久化的 ops 列表；
+	 * 在线玩家用真实名字构造 {@code NameAndId}，离线玩家回退遍历
+	 * {@code ServerOpList#getEntries()} 按 UUID 匹配（ops.json 条目含 UUID）。</p>
+	 *
+	 * @param server 服务器实例（可能为 null，返回 false）
+	 * @param uuid   玩家 UUID
+	 * @return 玩家是否在 ops.json 中
+	 */
+	public static boolean isOp(MinecraftServer server, UUID uuid) {
+		if (server == null || uuid == null) {
+			return false;
+		}
+		ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+		if (online != null) {
+			return server.getPlayerList().isOp(new NameAndId(uuid, online.getName().getString()));
+		}
+		for (ServerOpListEntry entry : server.getPlayerList().getOps().getEntries()) {
+			if (entry.getUser() != null && uuid.equals(entry.getUser().id())) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

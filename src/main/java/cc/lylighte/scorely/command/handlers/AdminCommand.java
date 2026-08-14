@@ -1,7 +1,10 @@
 package cc.lylighte.scorely.command.handlers;
 
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import cc.lylighte.scorely.command.ScorelyCommands;
@@ -16,6 +19,7 @@ import cc.lylighte.scorely.util.Result;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.Permissions;
 
 /**
@@ -24,7 +28,8 @@ import net.minecraft.server.permissions.Permissions;
  * <ul>
  *   <li>{@code /scorely admin reload} —— 热重载配置（校验通过才生效，失败保留旧配置）；</li>
  *   <li>{@code /scorely admin refresh} —— 强制全量刷新积分（受周期配额限制）；</li>
- *   <li>{@code /scorely admin rule list} —— 列出所有积分规则及其计分配置。</li>
+ *   <li>{@code /scorely admin rule list} —— 列出所有积分规则及其计分配置；</li>
+ *   <li>{@code /scorely admin star add|remove|list} —— 管理打星名单（Phase 11）。</li>
  * </ul>
  */
 public final class AdminCommand {
@@ -41,7 +46,16 @@ public final class AdminCommand {
 				.executes(ctx -> refresh(ctx.getSource(), scheduler)))
 			.then(Commands.literal("rule")
 				.then(Commands.literal("list")
-					.executes(ctx -> ruleList(ctx.getSource(), engine))));
+					.executes(ctx -> ruleList(ctx.getSource(), engine))))
+			.then(Commands.literal("star")
+				.then(Commands.literal("add")
+					.then(Commands.argument("player", StringArgumentType.word())
+						.executes(ctx -> starAdd(ctx.getSource(), configManager, StringArgumentType.getString(ctx, "player")))))
+				.then(Commands.literal("remove")
+					.then(Commands.argument("player", StringArgumentType.word())
+						.executes(ctx -> starRemove(ctx.getSource(), configManager, StringArgumentType.getString(ctx, "player")))))
+				.then(Commands.literal("list")
+					.executes(ctx -> starList(ctx.getSource(), configManager))));
 	}
 
 	/**
@@ -143,5 +157,86 @@ public final class AdminCommand {
 			sb.append(" ").append(ChatHelper.RED).append(Lang.format(lang, "cmd.admin.rule.disabled")).append(ChatHelper.RESET);
 		}
 		return sb.toString();
+	}
+
+	// ========== 打星名单（Phase 11） ==========
+
+	/** 将玩家加入打星名单（在线优先，离线回退名称缓存反查）。 */
+	private static int starAdd(CommandSourceStack source, ConfigManager configManager, String playerName) {
+		String lang = ScorelyCommands.langOf(source);
+		if (configManager == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.config_unavailable"))));
+			return 0;
+		}
+		UUID target = resolvePlayerUuid(source, configManager, playerName);
+		if (target == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.star.player_not_found", playerName))));
+			return 0;
+		}
+		Result result = configManager.addStarPlayer(target);
+		if (result != null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + ChatHelper.RED
+				+ Lang.format(lang, result.getKey(), result.getArgs()) + ChatHelper.RESET)));
+			return 0;
+		}
+		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.star.added", playerName))), false);
+		return 1;
+	}
+
+	/** 将玩家移出打星名单。 */
+	private static int starRemove(CommandSourceStack source, ConfigManager configManager, String playerName) {
+		String lang = ScorelyCommands.langOf(source);
+		if (configManager == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.config_unavailable"))));
+			return 0;
+		}
+		UUID target = resolvePlayerUuid(source, configManager, playerName);
+		if (target == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.star.player_not_found", playerName))));
+			return 0;
+		}
+		Result result = configManager.removeStarPlayer(target);
+		if (result != null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + ChatHelper.RED
+				+ Lang.format(lang, result.getKey(), result.getArgs()) + ChatHelper.RESET)));
+			return 0;
+		}
+		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.star.removed", playerName))), false);
+		return 1;
+	}
+
+	/** 列出打星名单（名称 + UUID）。 */
+	private static int starList(CommandSourceStack source, ConfigManager configManager) {
+		String lang = ScorelyCommands.langOf(source);
+		if (configManager == null) {
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.admin.config_unavailable"))));
+			return 0;
+		}
+		Set<UUID> stars = configManager.getStarPlayers();
+		StringBuilder sb = new StringBuilder();
+		sb.append(ChatHelper.prefix()).append('\n');
+		sb.append(ChatHelper.separator(Lang.format(lang, "cmd.admin.star.title", stars.size()))).append('\n');
+		if (stars.isEmpty()) {
+			sb.append("  ").append(ChatHelper.GRAY).append(Lang.format(lang, "cmd.admin.star.empty")).append(ChatHelper.RESET);
+		} else {
+			for (UUID uuid : stars) {
+				String name = ScorelyCommands.playerName(source.getServer(), uuid);
+				sb.append("  ").append(ChatHelper.YELLOW).append("★").append(ChatHelper.RESET)
+					.append(" ").append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
+					.append("  ").append(ChatHelper.GRAY).append(uuid).append(ChatHelper.RESET).append('\n');
+			}
+			sb.setLength(sb.length() - 1); // 去掉末尾换行
+		}
+		source.sendSuccess(() -> Component.literal(sb.toString()), false);
+		return 1;
+	}
+
+	/** 解析玩家 UUID：在线玩家按真实名字命中，离线回退名称缓存反查。 */
+	private static UUID resolvePlayerUuid(CommandSourceStack source, ConfigManager configManager, String playerName) {
+		ServerPlayer online = source.getServer().getPlayerList().getPlayerByName(playerName);
+		if (online != null) {
+			return online.getUUID();
+		}
+		return configManager.findPlayerUuidByName(playerName);
 	}
 }

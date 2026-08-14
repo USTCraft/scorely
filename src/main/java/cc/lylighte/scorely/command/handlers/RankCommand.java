@@ -86,8 +86,13 @@ public final class RankCommand {
 			int rank = (page - 1) * PAGE_SIZE + 1;
 			for (ScoreEntry entry : entries) {
 				String name = ScorelyCommands.playerName(server, entry.player());
+				// Phase 11：打星玩家照常入榜（排名竞争语义下不算正式名次），名字带 ★ 标记
+				String star = ScorelyCommands.isStarred(server, entry.player())
+					? " " + ChatHelper.YELLOW + "★" + ChatHelper.RESET
+					: "";
 				sb.append("  ").append(ChatHelper.GOLD).append(rank).append(ChatHelper.RESET)
 					.append(". ").append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
+					.append(star)
 					.append("  ").append(ChatHelper.formatNumber(entry.score())).append('\n');
 				rank++;
 			}

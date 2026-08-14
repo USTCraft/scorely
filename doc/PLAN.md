@@ -257,6 +257,8 @@ public class StatTier {
       "zh_cn": "积分刷新成功！"
     }
   },
+  "starPlayers": ["uuid1", "uuid2"],  // 打星玩家（Phase 11）：照常计分，榜单带 ★ 标记
+  "starOps": true,                      // OP 自动打星（默认开）
   "refreshInterval": 5,
   "autoSaveInterval": 60
 }
@@ -345,6 +347,7 @@ dependencies {
 | `/scorely admin reload` | 重载配置 | OP |
 | `/scorely admin refresh` | 强制全量刷新积分 | OP |
 | `/scorely admin rule list` | 列出所有积分规则/维度 | OP |
+| `/scorely admin star add \| remove \| list <player>` | 管理打星名单（Phase 11） | OP |
 
 **示例输出**：
 
@@ -394,12 +397,12 @@ world/serverconfig/scorely/
 | **Phase 9** | 国际化（en_us + zh_cn）✅：服务端语言表（`util/Lang` + `assets/scorely/lang/*.json`，回退链 目标→en_us→key）、per-player 语言（classTweaker 读 `ServerPlayer.language`，控制台用 config `language` 字段，默认 zh_cn）、Result/命令层/规则名全量 key 化、config 校验错误 19 键、modmenu 描述翻译键 | 0.5 天 |
 | **Phase 9.1** | 语言覆盖表：config.json 可选 `lang` 字段（翻译键 → {语言码 → 文本}），查表顺序 覆盖(目标语言) → 内置(目标语言) → 覆盖(en_us) → 内置(en_us) → key 原文；服主可新增自定义键（displayName 填键名 → 自定义规则名多语言自适应）或覆盖内置键（命令话术定制）；volatile 引用替换（reload 失败保持旧覆盖）；校验新增 2 个错误键（lang 键非空/文本非空）✅ | 0.3 天 |
 | **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤（负分玩家入榜）、规则新增 `sort` 字段（asc/desc，默认 desc，惩罚榜配 asc 扣最多排最前）、校验放开 multiplier/tier value 非负限制（threshold 仍非负）、负向封顶复用现有 cap（|积分|上限，零新增语义）、总榜仅放开过滤 ✅ | 1 天 |
-| **Phase 11** | 创造/旁观模式玩家排除（**待决策，暂缓**）：数据收集阶段按游戏模式过滤，被排除玩家不进收集 map（全量重算自然移除），切换回生存自动恢复；方案已定（运行时判定 + 低频同步，零持久化），语义待决策后实施 | 0.5 天 |
+| **Phase 11** | 打星机制（out-of-competition）：特殊身份玩家（config `starPlayers` UUID 名单 + `starOps` 开关默认开）照常统计计分、榜单显示但带 ★ 标记（不参与正式排名竞争）；`/scorely admin star add/remove/list` + 配置双通道维护；名单/OP 判定持久（离线也生效）；原"创造/旁观模式排除"方案弃用（模式信息仅运行时存在，无法处理离线玩家） ✅ | 0.5 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
 
 **总计**：约 16.2 天
 
-> **关于创造/旁观排除（Phase 11，待决策，暂缓）**：背景——创造模式下 advancements 与飞行统计（fly_one_cm）仍会累计，管理员会污染进度榜/探索榜。技术方案已明确：排除判定放收集层（被排除玩家不进入收集 map → 全量重算自然移除 → 榜单消失；恢复生存 → 自动回来），纯运行时判定（JOIN 记录 + 低频 tick 同步模式切换，零持久化自愈，不碰 NBT/playerdata）。待决策点：① 排除范围是否含旁观模式；② 判定粒度（按当前/最后已知模式实时排除，切回生存立即恢复）；③ 是否需配置化（如排除名单覆写）。
+> **关于打星机制（Phase 11，原"创造/旁观排除"重定义）**：语义对齐 ACM/XCPC 打星队伍——特殊身份玩家照常游戏、统计照常采集、积分照常计算，**榜单显示但带 ★ 标记**（不参与正式排名竞争），自己 `/scorely score` 正常可见。判定源（任一命中即打星）：① config.json `starPlayers`（UUID 名单，持久，离线生效）；② `starOps` 开关（默认开，OP 经 ops.json 判定，持久离线生效）。游戏模式不再作为判定源（原"数据收集层过滤"方案弃用：模式仅运行时存在，离线玩家磁盘累计值无法回溯，收集层过滤无法根治离线污染；查询层过滤 + 持久判定源可完全规避）。实现：打星玩家仍在积分缓存中（`getPlayerScore` 正常），仅榜单渲染时对打星条目标记；`/scorely admin star add/remove/list` 命令维护名单（在线玩家 → 名称缓存解析 UUID），热生效零重算；名单/开关随 config reload 更新（`admin star` 命令直接改 config.json）。
 
 > **关于负积分（Phase 10）**：候选研究结论——核心惩罚项 `deaths`（死亡次数，语义最清晰、无法刷）与 `damage_taken`（累计受伤 HP，细粒度），均已在现有全量统计表中（`minecraft:custom` 类型，26.2 已验证常量存在）；细分项（`deaths_by_*`/`killed_by/*`）语义更好但需 StatMatcher 前缀通配支持，且与 `deaths` 同死亡事件双计（配置须二选一）；`fall_one_cm`（摔落已含于 damage_taken）/`drop`（正常整理背包会被误罚）不建议默认。实现面：① 过滤放开——`ScoringEngine.computeScores`/`ScoreCache`（getLeaderboard/getTotalLeaderboard）的 `>0` 改 `!=0`；② 排序——规则新增 `sort` 字段（asc/desc，默认 desc 零回归），惩罚榜配 asc（扣最多排最前），总榜保持降序（净分排序）；③ 校验放开——multiplier/matcher multiplier/tier value 允许负值（仅拒非有限，threshold 仍非负）；④ **负向封顶零改动**——现行 cap 语义实为"|积分|上限"（线性截断统计值再乘负 multiplier、tiers 截断 adjusted），负分场景天然给出扣分封底（如 cap=50、multiplier=-10 → 扣分 ≥ -500），无需新语义；⑤ 命令层零改动（`ChatHelper.formatNumber` 千分位负号天然支持）。惩罚榜**默认不预置**（预置榜单结构重做待规划），config 示例给出死亡榜模板（deaths × -10，cap 50）。
 

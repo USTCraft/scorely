@@ -97,7 +97,8 @@ public final class ScorelyCommands {
 		sb.append("  /scorely rank [rule] [page]  ").append(Lang.format(lang, "cmd.help.rank")).append('\n');
 		sb.append("  /scorely admin reload        ").append(Lang.format(lang, "cmd.help.admin.reload")).append('\n');
 		sb.append("  /scorely admin refresh       ").append(Lang.format(lang, "cmd.help.admin.refresh")).append('\n');
-		sb.append("  /scorely admin rule list     ").append(Lang.format(lang, "cmd.help.admin.rule_list"));
+		sb.append("  /scorely admin rule list     ").append(Lang.format(lang, "cmd.help.admin.rule_list")).append('\n');
+		sb.append("  /scorely admin star list     ").append(Lang.format(lang, "cmd.help.admin.star"));
 		source.sendSuccess(() -> Component.literal(sb.toString()), false);
 		return 1;
 	}
@@ -138,6 +139,26 @@ public final class ScorelyCommands {
 			}
 		}
 		return uuid.toString().substring(0, 8);
+	}
+
+	/**
+	 * 判定玩家是否打星（Phase 11）：UUID 名单命中，或 starOps 开启且该玩家为 OP。
+	 *
+	 * <p>判定源均持久（config 名单 / ops.json），离线玩家同样生效；
+	 * 榜单渲染时对打星条目带 ★ 标记（照常计分，不参与正式排名竞争）。</p>
+	 *
+	 * @param server 服务器实例（可能为 null，视为非打星）
+	 * @param uuid   玩家 UUID
+	 * @return 是否打星
+	 */
+	public static boolean isStarred(MinecraftServer server, UUID uuid) {
+		if (uuid == null || configManager == null) {
+			return false;
+		}
+		if (configManager.getStarPlayers().contains(uuid)) {
+			return true;
+		}
+		return configManager.isStarOpsEnabled() && CompatHelper.isOp(server, uuid);
 	}
 
 	/** 按规则 ID 查找规则（不存在返回 null）。 */

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -62,6 +63,10 @@ public final class ConfigManager {
 	private int refreshIntervalMinutes = DefaultRules.REFRESH_INTERVAL_MINUTES;
 	/** 玩家 UUID → 显示名（名称缓存，String key 读写）。 */
 	private final Map<UUID, String> playerNames = new HashMap<>();
+	/** 打星玩家 UUID 集合（Phase 11，来自 config starPlayers）。 */
+	private final Set<UUID> starPlayers = new HashSet<>();
+	/** OP 自动打星开关（Phase 11，默认开）。 */
+	private boolean starOps = true;
 	/** 名称缓存是否变更（脏标记）。 */
 	private boolean namesDirty;
 	/** tick 计数（兜底落盘用）。 */
@@ -108,6 +113,9 @@ public final class ConfigManager {
 			this.refreshIntervalMinutes = config.getRefreshIntervalMinutes() > 0
 					? config.getRefreshIntervalMinutes()
 					: DefaultRules.REFRESH_INTERVAL_MINUTES;
+			this.starPlayers.clear();
+			this.starPlayers.addAll(parseStarPlayers(config.getStarPlayers()));
+			this.starOps = config.isStarOps();
 			Lang.setDefaultLanguage(config.getLanguage());
 			Lang.setOverrides(config.getLang());
 			Scorely.LOGGER.info("Scorely config loaded: {} rules, refresh interval {} min, default language {}",
@@ -146,6 +154,9 @@ public final class ConfigManager {
 			// 全部校验通过后才替换状态（失败保持旧配置生效）
 			this.rules = newRules;
 			this.refreshIntervalMinutes = newInterval;
+			this.starPlayers.clear();
+			this.starPlayers.addAll(parseStarPlayers(config.getStarPlayers()));
+			this.starOps = config.isStarOps();
 			Lang.setDefaultLanguage(config.getLanguage());
 			Lang.setOverrides(config.getLang());
 			Scorely.LOGGER.info("Scorely config reloaded: {} rules, refresh interval {} min, default language {}",
@@ -165,6 +176,126 @@ public final class ConfigManager {
 	/** 刷新周期（分钟）。 */
 	public int getRefreshIntervalMinutes() {
 		return refreshIntervalMinutes;
+	}
+
+	/** 打星玩家 UUID 集合（Phase 11，只读视图）。 */
+	public Set<UUID> getStarPlayers() {
+		return Collections.unmodifiableSet(starPlayers);
+	}
+
+	/** OP 自动打星开关（Phase 11）。 */
+	public boolean isStarOpsEnabled() {
+		return starOps;
+	}
+
+	/**
+	 * 按显示名反查玩家 UUID（名称缓存，忽略大小写；未命中返回 null）。
+	 *
+	 * <p>Phase 11 打星命令支持离线玩家：在线优先（命令层按真实名字命中），
+	 * 离线回退名称缓存反查。</p>
+	 */
+	public UUID findPlayerUuidByName(String name) {
+		if (name == null || name.isEmpty()) {
+			return null;
+		}
+		for (Map.Entry<UUID, String> entry : playerNames.entrySet()) {
+			if (name.equalsIgnoreCase(entry.getValue())) {
+				return entry.getKey();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * 将玩家加入打星名单（Phase 11，{@code /scorely admin star add}）。
+	 *
+	 * <p>先写盘（原子写）成功再更新内存，避免持久化失败时内存与磁盘不一致；
+	 * 写盘基于磁盘上的 config.json（保留服主手改的其他字段）。</p>
+	 *
+	 * @return null 表示成功；否则携带失败原因（错误翻译键）
+	 */
+	public Result addStarPlayer(UUID uuid) {
+		if (uuid == null) {
+			return Result.failure("config.error.star_invalid", "null");
+		}
+		String display = starDisplayName(uuid);
+		if (starPlayers.contains(uuid)) {
+			return Result.failure("cmd.admin.star.already_added", display);
+		}
+		Set<UUID> next = new HashSet<>(starPlayers);
+		next.add(uuid);
+		Result saveError = saveStarConfig(next);
+		if (saveError != null) {
+			return saveError;
+		}
+		starPlayers.clear();
+		starPlayers.addAll(next);
+		Scorely.LOGGER.info("Scorely star player added: {} ({})", display, uuid);
+		return null;
+	}
+
+	/**
+	 * 将玩家移出打星名单（Phase 11，{@code /scorely admin star remove}）。
+	 *
+	 * @return null 表示成功；否则携带失败原因（错误翻译键）
+	 */
+	public Result removeStarPlayer(UUID uuid) {
+		if (uuid == null) {
+			return Result.failure("config.error.star_invalid", "null");
+		}
+		String display = starDisplayName(uuid);
+		if (!starPlayers.contains(uuid)) {
+			return Result.failure("cmd.admin.star.not_in_list", display);
+		}
+		Set<UUID> next = new HashSet<>(starPlayers);
+		next.remove(uuid);
+		Result saveError = saveStarConfig(next);
+		if (saveError != null) {
+			return saveError;
+		}
+		starPlayers.clear();
+		starPlayers.addAll(next);
+		Scorely.LOGGER.info("Scorely star player removed: {} ({})", display, uuid);
+		return null;
+	}
+
+	/** 打星名单展示名：优先名称缓存，未记录回退 UUID 全串。 */
+	private String starDisplayName(UUID uuid) {
+		String cached = playerNames.get(uuid);
+		return cached != null ? cached : uuid.toString();
+	}
+
+	/** 将新名单写回磁盘 config.json（原子写；成功返回 null）。 */
+	private Result saveStarConfig(Set<UUID> next) {
+		Path configPath = configDir.resolve(CONFIG_FILE);
+		try {
+			ScorelyConfig config = Config.load(configPath, ScorelyConfig.class);
+			if (config == null) {
+				return Result.failure("config.reload.missing", configPath);
+			}
+			List<String> serialized = next.stream().map(UUID::toString).sorted().toList();
+			config.setStarPlayers(serialized);
+			Config.saveAtomic(configPath, config);
+			return null;
+		} catch (Exception e) {
+			Scorely.LOGGER.warn("Scorely failed to save star players to config: {}", e.toString());
+			return Result.failure("cmd.admin.star.save_failed", String.valueOf(e.getMessage()));
+		}
+	}
+
+	/** 解析配置中的 UUID 字符串列表（防御性忽略非法项）。 */
+	private static Set<UUID> parseStarPlayers(List<String> raw) {
+		Set<UUID> result = new HashSet<>();
+		if (raw != null) {
+			for (String value : raw) {
+				try {
+					result.add(UUID.fromString(value));
+				} catch (IllegalArgumentException ignored) {
+					// 校验层已保证合法，此处仅防御
+				}
+			}
+		}
+		return result;
 	}
 
 	/**
@@ -300,6 +431,20 @@ public final class ConfigManager {
 					if (isBlank(text.getKey()) || isBlank(text.getValue())) {
 						return Result.failure("config.error.lang_value_blank", entry.getKey());
 					}
+				}
+			}
+		}
+		// Phase 11：starPlayers 必须为合法 UUID
+		List<String> stars = config.getStarPlayers();
+		if (stars != null) {
+			for (String star : stars) {
+				if (isBlank(star)) {
+					return Result.failure("config.error.star_invalid", "<blank>");
+				}
+				try {
+					UUID.fromString(star);
+				} catch (IllegalArgumentException e) {
+					return Result.failure("config.error.star_invalid", star);
 				}
 			}
 		}

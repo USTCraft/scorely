@@ -17,6 +17,8 @@ import cc.lylighte.scorely.util.Lang;
  *   <li>{@code lang} —— 语言覆盖表（可选）：翻译键 → {语言码 → 文本}，
  *       查表优先于内置语言表（Phase 9.1），服主可新增自定义键或覆盖内置键；</li>
  *   <li>{@code refreshIntervalMinutes} —— 定时全量重算周期（分钟）；</li>
+ *   <li>{@code starPlayers} —— 打星玩家 UUID 名单（Phase 11），照常计分、榜单带 ★ 标记；</li>
+ *   <li>{@code starOps} —— OP 自动打星开关（Phase 11，默认开，经 ops.json 持久判定）；</li>
  *   <li>{@code rules} —— 积分规则列表，条目结构与 {@link ScoringRule} 一一对应，
  *       由 Gson 直接反序列化（无 DTO 副本）。</li>
  * </ul>
@@ -31,6 +33,10 @@ public final class ScorelyConfig {
 	private Map<String, Map<String, String>> lang;
 	/** 刷新周期（分钟），默认 5。 */
 	private int refreshIntervalMinutes = DefaultRules.REFRESH_INTERVAL_MINUTES;
+	/** 打星玩家 UUID 名单（Phase 11；缺省空表，照常计分、榜单带 ★ 标记）。 */
+	private List<String> starPlayers = List.of();
+	/** OP 自动打星开关（Phase 11；缺省开，OP 经 ops.json 持久判定）。 */
+	private boolean starOps = true;
 	/** 积分规则列表（空列表在加载时视为无效，回退默认规则）。 */
 	private List<ScoringRule> rules = List.of();
 
@@ -52,6 +58,22 @@ public final class ScorelyConfig {
 
 	public void setRefreshIntervalMinutes(int refreshIntervalMinutes) {
 		this.refreshIntervalMinutes = refreshIntervalMinutes;
+	}
+
+	public List<String> getStarPlayers() {
+		return starPlayers;
+	}
+
+	public void setStarPlayers(List<String> starPlayers) {
+		this.starPlayers = starPlayers == null ? List.of() : starPlayers;
+	}
+
+	public boolean isStarOps() {
+		return starOps;
+	}
+
+	public void setStarOps(boolean starOps) {
+		this.starOps = starOps;
 	}
 
 	public List<ScoringRule> getRules() {
