@@ -53,6 +53,8 @@
 	"config.error.matcher_tier_null": "rule {0} matcher contains an empty tier",
 	"config.error.matcher_tier_value": "rule {0} matcher tier threshold/value must be non-negative",
 	"config.error.interval": "refreshIntervalMinutes must be a positive integer",
+	"config.error.lang_key_blank": "lang entry key must not be blank",
+	"config.error.lang_value_blank": "lang entry {0} contains a blank text",
 	"scorely.rule.mining": "Mining",
 	"scorely.rule.combat": "Combat",
 	"scorely.rule.exploration": "Exploration",

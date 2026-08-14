@@ -237,6 +237,15 @@ public class StatTier {
       }
     }
   ],
+  "lang": {
+    "scorely.rule.boss": {          // 自定义键：displayName 填 "scorely.rule.boss" 即多语言自适应
+      "zh_cn": "Boss 榜",
+      "en_us": "Boss Board"
+    },
+    "cmd.refresh.done": {           // 覆盖内置键（话术定制）；只配 zh_cn 时 en_us 回退内置
+      "zh_cn": "积分刷新成功！"
+    }
+  },
   "refreshInterval": 5,
   "autoSaveInterval": 60
 }
@@ -372,6 +381,7 @@ world/serverconfig/scorely/
 | **Phase 8.2** | 热重载 + 展示接入：`admin reload` 校验通过才替换引擎（失败保留旧引擎报错）+ 立即重算 + 调度器间隔更新；rank/score 用名称缓存替换 UUID 短格式 ✅ | 0.5 天 |
 | **Phase 8.3** | 刷新频率约束简化：移除 admin 刷新配额（MAX_EXTRA_REFRESHES），全量重算仅受入口权限门禁约束（OP），不再限频；`admin reload` 统一走 `refreshNow()`（服务器未就绪时才延迟到下次定时）✅ | 0.2 天 |
 | **Phase 9** | 国际化（en_us + zh_cn）✅：服务端语言表（`util/Lang` + `assets/scorely/lang/*.json`，回退链 目标→en_us→key）、per-player 语言（classTweaker 读 `ServerPlayer.language`，控制台用 config `language` 字段，默认 zh_cn）、Result/命令层/规则名全量 key 化、config 校验错误 19 键、modmenu 描述翻译键 | 0.5 天 |
+| **Phase 9.1** | 语言覆盖表：config.json 可选 `lang` 字段（翻译键 → {语言码 → 文本}），查表顺序 覆盖(目标语言) → 内置(目标语言) → 覆盖(en_us) → 内置(en_us) → key 原文；服主可新增自定义键（displayName 填键名 → 自定义规则名多语言自适应）或覆盖内置键（命令话术定制）；volatile 引用替换（reload 失败保持旧覆盖）；校验新增 2 个错误键（lang 键非空/文本非空）✅ | 0.3 天 |
 | **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤、分榜排序语义、惩罚规则策略（受伤/死亡，独立分榜 + 计入总榜） | 1 天 |
 | **Phase 11** | 创造/旁观模式玩家排除（**待决策，暂缓**）：数据收集阶段按游戏模式过滤，被排除玩家不进收集 map（全量重算自然移除），切换回生存自动恢复；方案已定（运行时判定 + 低频同步，零持久化），语义待决策后实施 | 0.5 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |

@@ -109,6 +109,7 @@ public final class ConfigManager {
 					? config.getRefreshIntervalMinutes()
 					: DefaultRules.REFRESH_INTERVAL_MINUTES;
 			Lang.setDefaultLanguage(config.getLanguage());
+			Lang.setOverrides(config.getLang());
 			Scorely.LOGGER.info("Scorely 配置加载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
 					rules.size(), refreshIntervalMinutes, config.getLanguage());
 		} catch (Exception e) {
@@ -146,6 +147,7 @@ public final class ConfigManager {
 			this.rules = newRules;
 			this.refreshIntervalMinutes = newInterval;
 			Lang.setDefaultLanguage(config.getLanguage());
+			Lang.setOverrides(config.getLang());
 			Scorely.LOGGER.info("Scorely 配置热重载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
 					rules.size(), refreshIntervalMinutes, config.getLanguage());
 			return Result.success("config.reload.ok", rules.size(), refreshIntervalMinutes);
@@ -276,6 +278,24 @@ public final class ConfigManager {
 		}
 		if (config.getRefreshIntervalMinutes() <= 0) {
 			return Result.failure("config.error.interval");
+		}
+		// Phase 9.1：lang 覆盖表结构校验（键非空、至少一个非空语言文本）
+		Map<String, Map<String, String>> lang = config.getLang();
+		if (lang != null) {
+			for (Map.Entry<String, Map<String, String>> entry : lang.entrySet()) {
+				if (isBlank(entry.getKey())) {
+					return Result.failure("config.error.lang_key_blank");
+				}
+				Map<String, String> byLocale = entry.getValue();
+				if (byLocale == null || byLocale.isEmpty()) {
+					return Result.failure("config.error.lang_value_blank", entry.getKey());
+				}
+				for (Map.Entry<String, String> text : byLocale.entrySet()) {
+					if (isBlank(text.getKey()) || isBlank(text.getValue())) {
+						return Result.failure("config.error.lang_value_blank", entry.getKey());
+					}
+				}
+			}
 		}
 		return null;
 	}

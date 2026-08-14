@@ -42,6 +42,8 @@ public final class Lang {
 
 	/** 语言表（locale → key → 文本）。加载完成后只读。 */
 	private static final Map<String, Map<String, String>> TABLES = new HashMap<>();
+	/** 语言覆盖表（config.json lang 字段，Phase 9.1）：key → {locale → 文本}；null = 未设置。 */
+	private static volatile Map<String, Map<String, String>> overrides;
 	/** 服务器默认语言（config.json 加载后覆盖）。 */
 	private static volatile String defaultLanguage = DEFAULT_LANGUAGE;
 	/** 是否已加载（幂等）。 */
@@ -79,6 +81,18 @@ public final class Lang {
 	/** 服务器默认语言（控制台/无法获取玩家语言时的缺省值）。 */
 	public static String getDefaultLanguage() {
 		return defaultLanguage;
+	}
+
+	/**
+	 * 设置语言覆盖表（Phase 9.1，config.json lang 字段）。
+	 *
+	 * <p>volatile 引用替换，与 rules 热更新模式一致：{@code admin reload}
+	 * 校验失败时不调用 → 旧覆盖表保持生效。传 null 表示清除覆盖。</p>
+	 *
+	 * @param table 翻译键 → {语言码 → 文本}（null 合法）
+	 */
+	public static void setOverrides(Map<String, Map<String, String>> table) {
+		overrides = table;
 	}
 
 	/**
@@ -146,10 +160,25 @@ public final class Lang {
 		}
 	}
 
-	/** 查表（语言不存在或 key 缺失返回 null）。 */
+	/**
+	 * 查表：覆盖表优先（目标语言），内置表次之；未命中返回 null。
+	 *
+	 * <p>配合 {@link #format} 的回退链（目标语言 → en_us → key 原文），
+	 * 实际生效顺序为 覆盖(目标) → 内置(目标) → 覆盖(en_us) → 内置(en_us) → key 原文。</p>
+	 */
 	private static String lookup(String language, String key) {
 		if (language == null || key == null) {
 			return null;
+		}
+		Map<String, Map<String, String>> overridesRef = overrides;
+		if (overridesRef != null) {
+			Map<String, String> byLocale = overridesRef.get(key);
+			if (byLocale != null) {
+				String text = byLocale.get(language);
+				if (text != null) {
+					return text;
+				}
+			}
 		}
 		Map<String, String> table = TABLES.get(language);
 		return table == null ? null : table.get(key);
