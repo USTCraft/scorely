@@ -90,9 +90,9 @@ public final class ConfigManager {
 			defaults.setRules(DefaultRules.create());
 			try {
 				Config.save(configPath, defaults);
-				Scorely.LOGGER.info("Scorely 首次启动：已生成默认配置 {}", configPath);
+				Scorely.LOGGER.info("Scorely first launch: generated default config {}", configPath);
 			} catch (IOException e) {
-				Scorely.LOGGER.warn("Scorely 生成默认配置失败（使用内置默认规则）: {}", e.toString());
+				Scorely.LOGGER.warn("Scorely failed to generate default config (using built-in default rules): {}", e.toString());
 			}
 			loadPlayerNames();
 			return;
@@ -110,11 +110,11 @@ public final class ConfigManager {
 					: DefaultRules.REFRESH_INTERVAL_MINUTES;
 			Lang.setDefaultLanguage(config.getLanguage());
 			Lang.setOverrides(config.getLang());
-			Scorely.LOGGER.info("Scorely 配置加载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
+			Scorely.LOGGER.info("Scorely config loaded: {} rules, refresh interval {} min, default language {}",
 					rules.size(), refreshIntervalMinutes, config.getLanguage());
 		} catch (Exception e) {
 			backupInvalid(configPath);
-			Scorely.LOGGER.warn("Scorely 配置加载失败（回退默认规则，原文件已保留为 {}.bak）: {}",
+			Scorely.LOGGER.warn("Scorely config load failed (falling back to default rules, original kept as {}.bak): {}",
 					configPath, e.toString());
 		}
 		loadPlayerNames();
@@ -148,11 +148,11 @@ public final class ConfigManager {
 			this.refreshIntervalMinutes = newInterval;
 			Lang.setDefaultLanguage(config.getLanguage());
 			Lang.setOverrides(config.getLang());
-			Scorely.LOGGER.info("Scorely 配置热重载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
+			Scorely.LOGGER.info("Scorely config reloaded: {} rules, refresh interval {} min, default language {}",
 					rules.size(), refreshIntervalMinutes, config.getLanguage());
 			return Result.success("config.reload.ok", rules.size(), refreshIntervalMinutes);
 		} catch (Exception e) {
-			Scorely.LOGGER.warn("Scorely 配置热重载失败（保持当前配置生效）: {}", e.toString());
+			Scorely.LOGGER.warn("Scorely config reload failed (current config kept active): {}", e.toString());
 			return Result.failure("config.reload.parse_error", String.valueOf(e.getMessage()));
 		}
 	}
@@ -215,9 +215,9 @@ public final class ConfigManager {
 		try {
 			Config.saveAtomic(configDir.resolve(PLAYERS_FILE), toJsonMap(playerNames));
 			namesDirty = false;
-			Scorely.LOGGER.debug("Scorely 玩家名称缓存已落盘（{} 条）", playerNames.size());
+			Scorely.LOGGER.debug("Scorely player name cache saved ({} entries)", playerNames.size());
 		} catch (IOException e) {
-			Scorely.LOGGER.warn("Scorely 玩家名称缓存落盘失败: {}", e.toString());
+			Scorely.LOGGER.warn("Scorely failed to save player name cache: {}", e.toString());
 		}
 	}
 
@@ -340,7 +340,7 @@ public final class ConfigManager {
 						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			}
 		} catch (IOException e) {
-			Scorely.LOGGER.warn("Scorely 备份损坏配置失败: {}", e.toString());
+			Scorely.LOGGER.warn("Scorely failed to back up corrupted config: {}", e.toString());
 		}
 	}
 
@@ -363,9 +363,9 @@ public final class ConfigManager {
 					// 非 UUID key（手改文件），跳过
 				}
 			}
-			Scorely.LOGGER.info("Scorely 玩家名称缓存加载：{} 条", playerNames.size());
+			Scorely.LOGGER.info("Scorely player name cache loaded: {} entries", playerNames.size());
 		} catch (Exception e) {
-			Scorely.LOGGER.warn("Scorely 玩家名称缓存加载失败（将重新累积）: {}", e.toString());
+			Scorely.LOGGER.warn("Scorely failed to load player name cache (will re-accumulate): {}", e.toString());
 		}
 	}
 

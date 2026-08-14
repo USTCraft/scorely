@@ -80,7 +80,7 @@ public final class RefreshScheduler {
 		reconcileKnownPlayers();
 		collectAndRecalculate();
 		this.nextScheduledTick = intervalTicks();
-		Scorely.LOGGER.info("Scorely 积分首次重算完成，下次定时刷新 {} 分钟后", refreshIntervalMinutes);
+		Scorely.LOGGER.info("Scorely initial recalculation done, next scheduled refresh in {} min", refreshIntervalMinutes);
 	}
 
 	/**
@@ -155,7 +155,7 @@ public final class RefreshScheduler {
 			dataCache.refresh(uuid, statsDir, advancementsDir);
 			engine.recalculatePlayer(uuid, dataCache.getStats(uuid), dataCache.getAdvancements(uuid));
 		} catch (IOException e) {
-			Scorely.LOGGER.warn("读取玩家数据失败 uuid={}: {}", uuid, e.toString());
+			Scorely.LOGGER.warn("Scorely failed to read player data uuid={}: {}", uuid, e.toString());
 		}
 	}
 
@@ -223,12 +223,12 @@ public final class RefreshScheduler {
 					advancementsByPlayer.put(uuid, advancements);
 				}
 			} catch (IOException e) {
-				Scorely.LOGGER.warn("读取离线玩家数据失败 uuid={}: {}", uuid, e.toString());
+				Scorely.LOGGER.warn("Scorely failed to read offline player data uuid={}: {}", uuid, e.toString());
 			}
 		}
 
 		engine.recalculateAll(statsByPlayer, advancementsByPlayer);
-		Scorely.LOGGER.info("Scorely 积分重算完成：在线 {} 人，离线 {} 人",
+		Scorely.LOGGER.info("Scorely recalculation done: {} online, {} offline players",
 				online.size(), dataCache.getKnownPlayers().size() - online.size());
 	}
 
@@ -250,7 +250,7 @@ public final class RefreshScheduler {
 						}
 					});
 		} catch (IOException e) {
-			Scorely.LOGGER.warn("扫描玩家统计目录失败: {}", e.toString());
+			Scorely.LOGGER.warn("Scorely failed to scan player stats directory: {}", e.toString());
 		}
 	}
 }

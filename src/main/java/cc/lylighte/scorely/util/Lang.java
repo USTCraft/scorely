@@ -144,19 +144,19 @@ public final class Lang {
 		String path = "/assets/scorely/lang/" + language + ".json";
 		try (InputStream in = Lang.class.getResourceAsStream(path)) {
 			if (in == null) {
-				Scorely.LOGGER.warn("Scorely 缺少语言资源: {}", path);
+				Scorely.LOGGER.warn("Scorely missing language resource: {}", path);
 				return;
 			}
 			Map<String, String> table = GSON.fromJson(
 					new InputStreamReader(in, StandardCharsets.UTF_8), STRING_MAP_TYPE);
 			if (table == null) {
-				Scorely.LOGGER.warn("Scorely 语言资源解析为空: {}", path);
+				Scorely.LOGGER.warn("Scorely language resource parsed as empty: {}", path);
 				return;
 			}
 			TABLES.put(language, table);
-			Scorely.LOGGER.debug("Scorely 语言表加载成功: {} ({} 键)", language, table.size());
+			Scorely.LOGGER.debug("Scorely language table loaded: {} ({} keys)", language, table.size());
 		} catch (IOException e) {
-			Scorely.LOGGER.warn("Scorely 语言资源加载失败 {}: {}", path, e.toString());
+			Scorely.LOGGER.warn("Scorely failed to load language resource {}: {}", path, e.toString());
 		}
 	}
 
