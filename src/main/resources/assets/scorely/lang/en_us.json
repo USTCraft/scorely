@@ -13,6 +13,7 @@
 	"cmd.rank.title_page": "{0} - Page {1}",
 	"cmd.rank.total": "Overall",
 	"cmd.rank.empty": "No score data yet",
+	"cmd.rank.star": "★",
 	"cmd.rank.no_more_page": "No more pages ({0} pages in total)",
 	"cmd.refresh.unavailable": "Refresh service not ready, try again later",
 	"cmd.refresh.done": "Your scores have been refreshed",

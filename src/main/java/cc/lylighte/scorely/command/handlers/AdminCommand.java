@@ -221,8 +221,12 @@ public final class AdminCommand {
 		} else {
 			for (UUID uuid : stars) {
 				String name = ScorelyCommands.playerName(source.getServer(), uuid);
-				sb.append("  ").append(ChatHelper.YELLOW).append("★").append(ChatHelper.RESET)
-					.append(" ").append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
+				// 打星标记符号可经 lang 覆盖表自定义（Phase 11）
+				String starText = Lang.format(lang, "cmd.rank.star");
+				if (!starText.isEmpty()) {
+					sb.append("  ").append(ChatHelper.YELLOW).append(starText).append(ChatHelper.RESET).append(" ");
+				}
+				sb.append(ChatHelper.AQUA).append(name).append(ChatHelper.RESET)
 					.append("  ").append(ChatHelper.GRAY).append(uuid).append(ChatHelper.RESET).append('\n');
 			}
 			sb.setLength(sb.length() - 1); // 去掉末尾换行

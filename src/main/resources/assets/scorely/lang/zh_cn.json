@@ -13,6 +13,7 @@
 	"cmd.rank.title_page": "{0} 第 {1} 页",
 	"cmd.rank.total": "总榜",
 	"cmd.rank.empty": "暂无积分数据",
+	"cmd.rank.star": "★",
 	"cmd.rank.no_more_page": "没有更多页（共 {0} 页）",
 	"cmd.refresh.unavailable": "刷新服务未就绪，请稍后再试",
 	"cmd.refresh.done": "已刷新你的积分",
