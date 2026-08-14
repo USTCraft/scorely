@@ -53,9 +53,9 @@
 	"config.error.matcher_tier_null": "规则 {0} 的匹配项存在空档位",
 	"config.error.matcher_tier_value": "规则 {0} 的匹配项档位 threshold/value 必须为非负数值",
 	"config.error.interval": "refreshIntervalMinutes 必须为正整数",
-	"rule.mining": "挖掘榜",
-	"rule.combat": "战斗榜",
-	"rule.exploration": "探索榜",
-	"rule.advancements": "进度榜",
+	"scorely.rule.mining": "挖掘榜",
+	"scorely.rule.combat": "战斗榜",
+	"scorely.rule.exploration": "探索榜",
+	"scorely.rule.advancements": "进度榜",
 	"modmenu.descriptionTranslation.scorely": "统计玩家进度、计算积分、提供查询的服务端模组"
 }
