@@ -1,0 +1,46 @@
+package cc.lylighte.scorely.config;
+
+import java.util.List;
+
+import cc.lylighte.scorely.scoring.DefaultRules;
+import cc.lylighte.scorely.scoring.ScoringRule;
+
+/**
+ * 服务端配置文件（{@code config/scorely/config.json}）结构。
+ *
+ * <p>字段即 JSON schema：</p>
+ * <ul>
+ *   <li>{@code refreshIntervalMinutes} —— 定时全量重算周期（分钟）；</li>
+ *   <li>{@code rules} —— 积分规则列表，条目结构与 {@link ScoringRule} 一一对应，
+ *       由 Gson 直接反序列化（无 DTO 副本）。</li>
+ * </ul>
+ *
+ * <p>纯 Java 实现，不依赖 Minecraft 类型。</p>
+ */
+public final class ScorelyConfig {
+
+	/** 刷新周期（分钟），默认 5。 */
+	private int refreshIntervalMinutes = DefaultRules.REFRESH_INTERVAL_MINUTES;
+	/** 积分规则列表（空列表在加载时视为无效，回退默认规则）。 */
+	private List<ScoringRule> rules = List.of();
+
+	/** Gson 反序列化所需的无参构造。 */
+	public ScorelyConfig() {
+	}
+
+	public int getRefreshIntervalMinutes() {
+		return refreshIntervalMinutes;
+	}
+
+	public void setRefreshIntervalMinutes(int refreshIntervalMinutes) {
+		this.refreshIntervalMinutes = refreshIntervalMinutes;
+	}
+
+	public List<ScoringRule> getRules() {
+		return rules;
+	}
+
+	public void setRules(List<ScoringRule> rules) {
+		this.rules = rules == null ? List.of() : rules;
+	}
+}

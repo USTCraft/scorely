@@ -18,15 +18,28 @@ import java.util.UUID;
  */
 public final class ScoringEngine {
 
-	private final List<ScoringRule> rules;
+	/** 积分规则（volatile 支持 Phase 8 配置加载后原子替换；读时快照引用）。 */
+	private volatile List<ScoringRule> rules;
 	private final ScoreCache cache;
 
 	/**
-	 * @param rules 积分规则列表（副本持有；规则变更时需重新构造引擎或由配置层重建）
+	 * @param rules 积分规则列表（副本持有；配置变更通过 {@link #setRules} 原子替换）
 	 */
 	public ScoringEngine(List<ScoringRule> rules) {
 		this.rules = rules == null ? List.of() : List.copyOf(rules);
 		this.cache = new ScoreCache();
+	}
+
+	/**
+	 * 原子替换积分规则（Phase 8 配置加载时调用）。
+	 *
+	 * <p>命令树在入口初始化时已捕获本引擎引用，因此热更新采用"改规则而非重建引擎"：
+	 * 下次全量重算（定时/手动）自然使用新规则；替换后不立即重算，由调度器按节奏执行。</p>
+	 *
+	 * @param newRules 新规则列表（null 视为空列表，副本持有）
+	 */
+	public void setRules(List<ScoringRule> newRules) {
+		this.rules = newRules == null ? List.of() : List.copyOf(newRules);
 	}
 
 	/**
@@ -86,7 +99,7 @@ public final class ScoringEngine {
 	/**
 	 * 获取积分规则列表（命令层展示用，如 {@code admin rule list}）。
 	 *
-	 * @return 规则列表（不可变副本，构造时已 {@link List#copyOf}）
+	 * @return 规则列表（不可变副本）
 	 */
 	public List<ScoringRule> getRules() {
 		return rules;

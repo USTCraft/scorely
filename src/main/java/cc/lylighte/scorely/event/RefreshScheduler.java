@@ -42,7 +42,7 @@ public final class RefreshScheduler {
 
 	/** 每秒 tick 数。 */
 	private static final long TICKS_PER_SECOND = 20L;
-	/** 每周期额外刷新次数上限（Phase 8 由 config.json 配置化）。 */
+	/** 每周期额外刷新次数上限（固定常量，暂不配置化）。 */
 	private static final int MAX_EXTRA_REFRESHES = 3;
 	/** 每 N 个周期全扫一次 stats 目录，补充新增离线玩家。 */
 	private static final int RECONCILE_PERIODS = 10;
@@ -52,7 +52,7 @@ public final class RefreshScheduler {
 	private final ScoringEngine engine;
 	private final PlayerDataCache dataCache = new PlayerDataCache();
 
-	/** 刷新周期（分钟），默认 5，Phase 8 由 config.json 覆盖。 */
+	/** 刷新周期（分钟），默认 5，由 config.json 的 refreshIntervalMinutes 覆盖。 */
 	private int refreshIntervalMinutes = DefaultRules.REFRESH_INTERVAL_MINUTES;
 
 	private MinecraftServer server;
@@ -70,7 +70,7 @@ public final class RefreshScheduler {
 		this.engine = engine;
 	}
 
-	/** 设置刷新周期（分钟）。Phase 8 配置加载时调用。 */
+	/** 设置刷新周期（分钟）。配置加载时调用。 */
 	public void setRefreshIntervalMinutes(int minutes) {
 		this.refreshIntervalMinutes = Math.max(1, minutes);
 	}
