@@ -231,6 +231,11 @@ public class StatTier {
       "displayName": "进度榜",
       "type": "advancement",
       "defaultValue": 10.0,
+      "frameValues": {            // 按难度分层（Phase 12）：task 普通 / goal 目标 / challenge 挑战；advancementValues > frameValues > defaultValue
+        "task": 20,
+        "goal": 30,
+        "challenge": 60
+      },
       "advancementValues": {
         "minecraft:adventure/kill_all_mobs": 100.0,
         "minecraft:end/kill_dragon": 200.0,
@@ -246,6 +251,16 @@ public class StatTier {
         { "statType": "minecraft:custom", "statPath": "minecraft:deaths", "multiplier": -10 }
       ],
       "cap": 50                      // 扣分封底：|分| ≤ 500（零新增语义，复用 |积分| 上限）
+    },
+    {
+      "id": "breadth",               // 广度榜（Phase 12 能力示例；默认不预置，用户 2026-08-13）
+      "displayName": "scorely.rule.breadth",
+      "type": "stat",
+      "mode": "count",               // 计数模式：已解锁（累计值>0）统计项数量 × multiplier
+      "matchers": [
+        { "statType": "*", "statPath": "*" }
+      ],
+      "multiplier": 2.0               // 每解锁一项 +2 分（自建参考，见 SCORING_PLAN 3.5）
     }
   ],
   "lang": {
@@ -277,7 +292,7 @@ public class ScoringEngine {
     // 查询：获取某规则排行榜
     List<ScoreEntry> getLeaderboard(String ruleId, int limit);
 
-    // 查询：获取总榜（所有规则积分之和）
+    // 查询：获取总榜（所有规则积分加权和，weight 默认 1）
     List<ScoreEntry> getTotalLeaderboard(int limit);
 
     // 查询：获取玩家在某规则下的分数
@@ -398,11 +413,16 @@ world/serverconfig/scorely/
 | **Phase 9.1** | 语言覆盖表：config.json 可选 `lang` 字段（翻译键 → {语言码 → 文本}），查表顺序 覆盖(目标语言) → 内置(目标语言) → 覆盖(en_us) → 内置(en_us) → key 原文；服主可新增自定义键（displayName 填键名 → 自定义规则名多语言自适应）或覆盖内置键（命令话术定制）；volatile 引用替换（reload 失败保持旧覆盖）；校验新增 2 个错误键（lang 键非空/文本非空）✅ | 0.3 天 |
 | **Phase 10** | 惩罚榜（负积分）：放开引擎/缓存 `>0` 过滤（负分玩家入榜）、规则新增 `sort` 字段（asc/desc，默认 desc，惩罚榜配 asc 扣最多排最前）、校验放开 multiplier/tier value 非负限制（threshold 仍非负）、负向封顶复用现有 cap（|积分|上限，零新增语义）、总榜仅放开过滤 ✅ | 1 天 |
 | **Phase 11** | 打星机制（out-of-competition）：特殊身份玩家（config `starPlayers` UUID 名单 + `starOps` 开关默认开）照常统计计分、榜单显示但带 ★ 标记（不参与正式排名竞争）；`/scorely admin star add/remove/list` + 配置双通道维护；名单/OP 判定持久（离线也生效）；原"创造/旁观模式排除"方案弃用（模式信息仅运行时存在，无法处理离线玩家） ✅ | 0.5 天 |
+| **Phase 12** | 计分模式扩展 + 进度分层 + 预置榜单重做：规则新增 `mode` 字段（linear/log/sqrt/count，默认 linear 零回归；count 供广度榜自建，**默认不预置**）、`maxScore`（显式满分）与 `weight`（总榜权重，默认 1）；进度型新增 `frameValues` 按难度分层（advancementValues > frameValues > defaultValue，默认 task 20/goal 30/challenge 60）；statType 通配支持；六榜数值与总榜口径定稿见 SCORING_PLAN ✅ | 1 天 |
 | **测试** | 边界情况 + 性能测试 + 多玩家验证 | 2 天 |
 
 **总计**：约 16.2 天
 
 > **关于打星机制（Phase 11，原"创造/旁观排除"重定义）**：语义对齐 ACM/XCPC 打星队伍——特殊身份玩家照常游戏、统计照常采集、积分照常计算，**榜单显示但带 ★ 标记**（不参与正式排名竞争），自己 `/scorely score` 正常可见。判定源（任一命中即打星）：① config.json `starPlayers`（UUID 名单，持久，离线生效）；② `starOps` 开关（默认开，OP 经 ops.json 判定，持久离线生效）。游戏模式不再作为判定源（原"数据收集层过滤"方案弃用：模式仅运行时存在，离线玩家磁盘累计值无法回溯，收集层过滤无法根治离线污染；查询层过滤 + 持久判定源可完全规避）。实现：打星玩家仍在积分缓存中（`getPlayerScore` 正常），仅榜单渲染时对打星条目标记；`/scorely admin star add/remove/list` 命令维护名单（在线玩家 → 名称缓存解析 UUID），热生效零重算；名单/开关随 config reload 更新（`admin star` 命令直接改 config.json）。
+
+> **关于计分模式扩展 + 进度分层 + 预置榜单重做（Phase 12）**：合并为一个 Phase（用户决策：饱和计分纳入、进度按难度分层、广度榜默认不启用；六榜数值与总榜口径定稿见 SCORING_PLAN.md）。① **计分模式**：规则新增 `mode` 字段（stat 型）——`linear`（默认，现状公式）/ `log`（`multiplier × log(1 + value÷divisor)`，cap 截断后取对数，抑制刷分收益）/ `sqrt`（`multiplier × sqrt(value÷divisor)`）/ `count`（已解锁统计项计数：匹配项累计值>0 每项 +multiplier；tiers/cap/divisor 忽略）。`mode ≠ linear` 时配置 `tiers` 报错（意图冲突）；默认规则暂不使用 log/sqrt，count 供广度榜自建。② **广度榜**（RL 灵感 A2）：count 模式全统计通配能力（每解锁一项 +2 分示例，幂等可算，无需历史状态；首次钓鱼/附魔/造访维度均计入）；**默认不预置**（用户 2026-08-13 拍板，见 SCORING_PLAN 3.5）。③ **进度分层**：advancement 型新增 `frameValues`（frame 名 → 分值），优先级 `advancementValues`（逐进度）> `frameValues`（按难度）> `defaultValue`（兜底）；帧信息来自进度元数据（26.2 验证：`AdvancementFrame` 已更名 `AdvancementType`（TASK/CHALLENGE/GOAL），经 `Advancement.display()` → `Optional<DisplayInfo>` → `DisplayInfo.getType().getSerializedName()` 取 "task"/"goal"/"challenge"）；帧映射由 CompatHelper 在服务器启动后构建静态缓存（服务端进度注册表启动后固定），引擎/调度器传参接入（纯 Java 隔离保持）。默认分层值 task 20 / goal 30 / challenge 60（估算满分 ~3420，运行时校准；root 进度无 display 走 defaultValue）。④ **statType 通配**：`StatMatcher` 的 statType 支持 `"*"`（此前仅 statPath 支持），count 模式全量统计通配所需。
+
+> **关于总榜组成（Phase 12 决策）**：总榜 = 各分榜积分的**加权和**，默认权重均为 1（规则新增 `weight` 字段，用户 2026-08-13，见 SCORING_PLAN 1.2）；惩罚榜负分直接计入；各榜满分在设计时统一 800（`maxScore` 显式满分，进度榜天然封顶 ~3420 除外），加权和量级横向可比。
 
 > **关于负积分（Phase 10）**：候选研究结论——核心惩罚项 `deaths`（死亡次数，语义最清晰、无法刷）与 `damage_taken`（累计受伤 HP，细粒度），均已在现有全量统计表中（`minecraft:custom` 类型，26.2 已验证常量存在）；细分项（`deaths_by_*`/`killed_by/*`）语义更好但需 StatMatcher 前缀通配支持，且与 `deaths` 同死亡事件双计（配置须二选一）；`fall_one_cm`（摔落已含于 damage_taken）/`drop`（正常整理背包会被误罚）不建议默认。实现面：① 过滤放开——`ScoringEngine.computeScores`/`ScoreCache`（getLeaderboard/getTotalLeaderboard）的 `>0` 改 `!=0`；② 排序——规则新增 `sort` 字段（asc/desc，默认 desc 零回归），惩罚榜配 asc（扣最多排最前），总榜保持降序（净分排序）；③ 校验放开——multiplier/matcher multiplier/tier value 允许负值（仅拒非有限，threshold 仍非负）；④ **负向封顶零改动**——现行 cap 语义实为"|积分|上限"（线性截断统计值再乘负 multiplier、tiers 截断 adjusted），负分场景天然给出扣分封底（如 cap=50、multiplier=-10 → 扣分 ≥ -500），无需新语义；⑤ 命令层零改动（`ChatHelper.formatNumber` 千分位负号天然支持）。惩罚榜**默认不预置**（预置榜单结构重做待规划），config 示例给出死亡榜模板（deaths × -10，cap 50）。
 
