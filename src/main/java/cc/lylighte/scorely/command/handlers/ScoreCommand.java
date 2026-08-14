@@ -10,6 +10,7 @@ import cc.lylighte.scorely.command.ScorelyCommands;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.util.ChatHelper;
+import cc.lylighte.scorely.util.Lang;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -40,18 +41,19 @@ public final class ScoreCommand {
 	private static int showAll(CommandSourceStack source, ScoringEngine engine) throws CommandSyntaxException {
 		ServerPlayer player = source.getPlayerOrException();
 		UUID uuid = player.getUUID();
+		String lang = ScorelyCommands.langOf(source);
 
 		StringBuilder sb = new StringBuilder();
 		sb.append(ChatHelper.prefix()).append('\n');
 		sb.append(ChatHelper.separator()).append('\n');
 		for (ScoringRule rule : engine.getRules()) {
-			String name = rule.getDisplayName() != null ? rule.getDisplayName() : rule.getId();
+			String name = Lang.ruleName(lang, rule);
 			double score = engine.getPlayerScore(uuid, rule.getId());
 			sb.append("  ").append(ChatHelper.YELLOW).append(name).append(ChatHelper.RESET)
 				.append(": ").append(ChatHelper.formatNumber(score)).append('\n');
 		}
 		sb.append(ChatHelper.separator()).append('\n');
-		sb.append("  ").append(ChatHelper.GREEN).append("总分").append(ChatHelper.RESET)
+		sb.append("  ").append(ChatHelper.GREEN).append(Lang.format(lang, "cmd.score.total")).append(ChatHelper.RESET)
 			.append(": ").append(ChatHelper.formatNumber(engine.getPlayerTotalScore(uuid)));
 		source.sendSuccess(() -> Component.literal(sb.toString()), false);
 		return 1;
@@ -61,15 +63,18 @@ public final class ScoreCommand {
 	private static int showRule(CommandSourceStack source, ScoringEngine engine, String ruleId) throws CommandSyntaxException {
 		ScoringRule rule = ScorelyCommands.findRule(engine, ruleId);
 		if (rule == null) {
-			source.sendFailure(Component.literal(ChatHelper.prefix(" 规则不存在: " + ruleId)));
+			source.sendFailure(Component.literal(ChatHelper.prefix(" "
+				+ Lang.format(ScorelyCommands.langOf(source), "cmd.rule.not_found", ruleId))));
 			return 0;
 		}
 		ServerPlayer player = source.getPlayerOrException();
 		UUID uuid = player.getUUID();
-		String name = rule.getDisplayName() != null ? rule.getDisplayName() : rule.getId();
+		String lang = ScorelyCommands.langOf(source);
+		String name = Lang.ruleName(lang, rule);
 		double score = engine.getPlayerScore(uuid, rule.getId());
-		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(
-			" " + ChatHelper.YELLOW + name + ChatHelper.RESET + " 积分: " + ChatHelper.formatNumber(score))), false);
+		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(" "
+			+ ChatHelper.YELLOW + name + ChatHelper.RESET + " "
+			+ Lang.format(lang, "cmd.score.rule", ChatHelper.formatNumber(score)))), false);
 		return 1;
 	}
 }

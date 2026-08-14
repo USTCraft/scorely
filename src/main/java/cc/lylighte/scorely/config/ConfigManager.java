@@ -16,6 +16,7 @@ import cc.lylighte.scorely.scoring.DefaultRules;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.scoring.StatMatcher;
 import cc.lylighte.scorely.scoring.StatTier;
+import cc.lylighte.scorely.util.Lang;
 import cc.lylighte.scorely.util.Result;
 
 import com.google.gson.reflect.TypeToken;
@@ -99,16 +100,17 @@ public final class ConfigManager {
 
 		try {
 			ScorelyConfig config = Config.load(configPath, ScorelyConfig.class);
-			String error = validate(config);
-			if (error != null) {
-				throw new IllegalArgumentException(error);
+			Result validation = validate(config);
+			if (validation != null) {
+				throw new IllegalArgumentException(validation.getKey());
 			}
 			this.rules = List.copyOf(config.getRules());
 			this.refreshIntervalMinutes = config.getRefreshIntervalMinutes() > 0
 					? config.getRefreshIntervalMinutes()
 					: DefaultRules.REFRESH_INTERVAL_MINUTES;
-			Scorely.LOGGER.info("Scorely 配置加载成功：{} 条规则，刷新周期 {} 分钟",
-					rules.size(), refreshIntervalMinutes);
+			Lang.setDefaultLanguage(config.getLanguage());
+			Scorely.LOGGER.info("Scorely 配置加载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
+					rules.size(), refreshIntervalMinutes, config.getLanguage());
 		} catch (Exception e) {
 			backupInvalid(configPath);
 			Scorely.LOGGER.warn("Scorely 配置加载失败（回退默认规则，原文件已保留为 {}.bak）: {}",
@@ -128,14 +130,13 @@ public final class ConfigManager {
 	public Result reload() {
 		Path configPath = configDir.resolve(CONFIG_FILE);
 		if (!Config.exists(configPath)) {
-			return Result.failure("配置文件不存在: " + configPath
-					+ "（若损坏后已被备份为 .bak，可改名恢复后重试）");
+			return Result.failure("config.reload.missing", configPath);
 		}
 		try {
 			ScorelyConfig config = Config.load(configPath, ScorelyConfig.class);
-			String error = validate(config);
-			if (error != null) {
-				return Result.failure("配置校验失败: " + error);
+			Result validation = validate(config);
+			if (validation != null) {
+				return validation; // 错误 key 已具体，命令层按玩家语言渲染
 			}
 			List<ScoringRule> newRules = List.copyOf(config.getRules());
 			int newInterval = config.getRefreshIntervalMinutes() > 0
@@ -144,13 +145,13 @@ public final class ConfigManager {
 			// 全部校验通过后才替换状态（失败保持旧配置生效）
 			this.rules = newRules;
 			this.refreshIntervalMinutes = newInterval;
-			Scorely.LOGGER.info("Scorely 配置热重载成功：{} 条规则，刷新周期 {} 分钟",
-					rules.size(), refreshIntervalMinutes);
-			return Result.success("配置已重载（" + rules.size() + " 条规则，刷新周期 "
-					+ refreshIntervalMinutes + " 分钟）");
+			Lang.setDefaultLanguage(config.getLanguage());
+			Scorely.LOGGER.info("Scorely 配置热重载成功：{} 条规则，刷新周期 {} 分钟，默认语言 {}",
+					rules.size(), refreshIntervalMinutes, config.getLanguage());
+			return Result.success("config.reload.ok", rules.size(), refreshIntervalMinutes);
 		} catch (Exception e) {
 			Scorely.LOGGER.warn("Scorely 配置热重载失败（保持当前配置生效）: {}", e.toString());
-			return Result.failure("配置解析失败: " + e.getMessage());
+			return Result.failure("config.reload.parse_error", String.valueOf(e.getMessage()));
 		}
 	}
 
@@ -218,82 +219,84 @@ public final class ConfigManager {
 		}
 	}
 
-	/** 校验配置内容，返回错误描述；null 表示通过。 */
-	private static String validate(ScorelyConfig config) {
+	/**
+	 * 校验配置内容，返回失败结果（携带错误翻译键与参数）；null 表示通过。
+	 */
+	private static Result validate(ScorelyConfig config) {
 		if (config == null || config.getRules() == null || config.getRules().isEmpty()) {
-			return "rules 不能为空";
+			return Result.failure("config.error.rules_empty");
 		}
 		Set<String> ids = new HashSet<>();
 		for (ScoringRule rule : config.getRules()) {
 			if (rule == null) {
-				return "存在空规则条目";
+				return Result.failure("config.error.null_rule");
 			}
 			if (isBlank(rule.getId())) {
-				return "规则 id 不能为空";
+				return Result.failure("config.error.id_blank");
 			}
 			if (!ids.add(rule.getId())) {
-				return "规则 id 重复: " + rule.getId();
+				return Result.failure("config.error.id_duplicate", rule.getId());
 			}
 			if (isBlank(rule.getType())) {
-				return "规则 " + rule.getId() + " 缺少 type";
+				return Result.failure("config.error.type_missing", rule.getId());
 			}
 			if (!ScoringRule.TYPE_STAT.equals(rule.getType())
 					&& !ScoringRule.TYPE_ADVANCEMENT.equals(rule.getType())) {
-				return "规则 " + rule.getId() + " 的 type 非法: " + rule.getType();
+				return Result.failure("config.error.type_invalid", rule.getId(), rule.getType());
 			}
 			if (!isFiniteNonNegative(rule.getMultiplier())) {
-				return "规则 " + rule.getId() + " 的 multiplier 必须为非负数值";
+				return Result.failure("config.error.multiplier", rule.getId());
 			}
 			if (!isFiniteNonNegative(rule.getCap())) {
-				return "规则 " + rule.getId() + " 的 cap 必须为非负数值";
+				return Result.failure("config.error.cap", rule.getId());
 			}
 			if (rule.getDivisor() == 0 || !Double.isFinite(rule.getDivisor())) {
-				return "规则 " + rule.getId() + " 的 divisor 必须为非零数值";
+				return Result.failure("config.error.divisor", rule.getId());
 			}
 			if (!isFiniteNonNegative(rule.getDefaultValue())) {
-				return "规则 " + rule.getId() + " 的 defaultValue 必须为非负数值";
+				return Result.failure("config.error.default_value", rule.getId());
 			}
 			for (StatMatcher matcher : rule.getMatchers()) {
 				if (matcher == null) {
-					return "规则 " + rule.getId() + " 存在空匹配项";
+					return Result.failure("config.error.matcher_null", rule.getId());
 				}
-				String mError = validateMatcher(rule, matcher);
+				Result mError = validateMatcher(rule, matcher);
 				if (mError != null) {
 					return mError;
 				}
 			}
 			for (StatTier tier : rule.getTiers()) {
 				if (tier == null) {
-					return "规则 " + rule.getId() + " 存在空档位";
+					return Result.failure("config.error.tier_null", rule.getId());
 				}
 				if (!isFiniteNonNegative(tier.getThreshold()) || !isFiniteNonNegative(tier.getValue())) {
-					return "规则 " + rule.getId() + " 的档位 threshold/value 必须为非负数值";
+					return Result.failure("config.error.tier_value", rule.getId());
 				}
 			}
 		}
 		if (config.getRefreshIntervalMinutes() <= 0) {
-			return "refreshIntervalMinutes 必须为正整数";
+			return Result.failure("config.error.interval");
 		}
 		return null;
 	}
 
-	private static String validateMatcher(ScoringRule rule, StatMatcher matcher) {
+	private static Result validateMatcher(ScoringRule rule, StatMatcher matcher) {
 		if (matcher.getDivisor() != null && (matcher.getDivisor() == 0 || !Double.isFinite(matcher.getDivisor()))) {
-			return "规则 " + rule.getId() + " 的匹配项 divisor 必须为非零数值";
+			return Result.failure("config.error.matcher_divisor", rule.getId());
 		}
 		if (matcher.getCap() != null && !isFiniteNonNegative(matcher.getCap())) {
-			return "规则 " + rule.getId() + " 的匹配项 cap 必须为非负数值";
+			return Result.failure("config.error.matcher_cap", rule.getId());
 		}
 		if (matcher.getMultiplier() != null && !isFiniteNonNegative(matcher.getMultiplier())) {
-			return "规则 " + rule.getId() + " 的匹配项 multiplier 必须为非负数值";
+			return Result.failure("config.error.matcher_multiplier", rule.getId());
 		}
 		if (matcher.getTiers() != null) {
 			for (StatTier tier : matcher.getTiers()) {
 				if (tier == null) {
-					return "规则 " + rule.getId() + " 的匹配项存在空档位";
+					return Result.failure("config.error.matcher_tier_null", rule.getId());
 				}
 				if (!isFiniteNonNegative(tier.getThreshold()) || !isFiniteNonNegative(tier.getValue())) {
-					return "规则 " + rule.getId() + " 的匹配项档位 threshold/value 必须为非负数值";
+					return Result.failure("config.error.matcher_tier_value", rule.getId());
 				}
 			}
 		}

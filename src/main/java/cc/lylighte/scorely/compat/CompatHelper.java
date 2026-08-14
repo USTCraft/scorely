@@ -93,4 +93,18 @@ public final class CompatHelper {
 		}
 		return result;
 	}
+
+	/**
+	 * 读取玩家客户端语言代码（Phase 9 国际化）。
+	 *
+	 * <p>26.2 中 {@code ServerPlayer.language} 为私有字段且无公开 getter
+	 * （{@code PlayerLanguageOptions} 已移除），通过 class tweaker
+	 * （scorely.classtweaker）开放为 accessible 后直接字段访问。</p>
+	 *
+	 * @param player 在线玩家
+	 * @return 语言代码（如 {@code zh_cn} / {@code en_us}；null 表示未知）
+	 */
+	public static String languageOf(ServerPlayer player) {
+		return player == null ? null : player.language;
+	}
 }

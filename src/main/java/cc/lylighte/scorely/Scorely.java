@@ -7,6 +7,7 @@ import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.event.ServerEvents;
 import cc.lylighte.scorely.scoring.DefaultRules;
 import cc.lylighte.scorely.scoring.ScoringEngine;
+import cc.lylighte.scorely.util.Lang;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -24,6 +25,8 @@ public class Scorely implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		LOGGER.info("Scorely initializing...");
+		// Phase 9：加载语言表（jar 内 assets/scorely/lang/*.json）
+		Lang.load();
 		// Phase 8：配置管理（服务器启动时加载 config.json，替换引擎规则）
 		ConfigManager configManager = new ConfigManager();
 		// 引擎：先用内置默认规则占位，SERVER_STARTED 时由 config.json 原子替换

@@ -20,6 +20,11 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
+loom {
+	// Phase 9：读取 ServerPlayer.language（客户端语言），见 scorely.classtweaker
+	accessWidenerPath = file("src/main/resources/scorely.classtweaker")
+}
+
 processResources {
 	def version = project.version
 	inputs.property "version", version

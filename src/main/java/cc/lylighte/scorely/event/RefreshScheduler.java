@@ -168,11 +168,11 @@ public final class RefreshScheduler {
 	 */
 	public Result refreshNow() {
 		if (server == null) {
-			return Result.failure("服务器未就绪，无法刷新");
+			return Result.failure("scheduler.server_not_ready");
 		}
 		pendingRefresh = false;
 		collectAndRecalculate();
-		return Result.success("积分已刷新");
+		return Result.success("scheduler.refreshed");
 	}
 
 	/** 服务器停止：释放服务器引用。 */

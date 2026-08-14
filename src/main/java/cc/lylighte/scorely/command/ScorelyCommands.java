@@ -10,11 +10,13 @@ import cc.lylighte.scorely.command.handlers.AdminCommand;
 import cc.lylighte.scorely.command.handlers.RankCommand;
 import cc.lylighte.scorely.command.handlers.RefreshCommand;
 import cc.lylighte.scorely.command.handlers.ScoreCommand;
+import cc.lylighte.scorely.compat.CompatHelper;
 import cc.lylighte.scorely.config.ConfigManager;
 import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.scoring.ScoringEngine;
 import cc.lylighte.scorely.scoring.ScoringRule;
 import cc.lylighte.scorely.util.ChatHelper;
+import cc.lylighte.scorely.util.Lang;
 
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
@@ -86,17 +88,32 @@ public final class ScorelyCommands {
 	/** {@code /scorely} —— 帮助信息。 */
 	private static int help(CommandContext<CommandSourceStack> context) {
 		CommandSourceStack source = context.getSource();
+		String lang = langOf(source);
 		StringBuilder sb = new StringBuilder();
 		sb.append(ChatHelper.prefix()).append('\n');
-		sb.append(ChatHelper.separator("命令帮助")).append('\n');
-		sb.append("  /scorely score [rule]        查看自己的积分\n");
-		sb.append("  /scorely refresh             刷新自己的积分\n");
-		sb.append("  /scorely rank [rule] [page]  排行榜（总榜/指定规则，可翻页）\n");
-		sb.append("  /scorely admin reload        重载配置 (OP)\n");
-		sb.append("  /scorely admin refresh       强制刷新积分 (OP)\n");
-		sb.append("  /scorely admin rule list     查看积分规则 (OP)");
+		sb.append(ChatHelper.separator(Lang.format(lang, "cmd.help.title"))).append('\n');
+		sb.append("  /scorely score [rule]        ").append(Lang.format(lang, "cmd.help.score")).append('\n');
+		sb.append("  /scorely refresh             ").append(Lang.format(lang, "cmd.help.refresh")).append('\n');
+		sb.append("  /scorely rank [rule] [page]  ").append(Lang.format(lang, "cmd.help.rank")).append('\n');
+		sb.append("  /scorely admin reload        ").append(Lang.format(lang, "cmd.help.admin.reload")).append('\n');
+		sb.append("  /scorely admin refresh       ").append(Lang.format(lang, "cmd.help.admin.refresh")).append('\n');
+		sb.append("  /scorely admin rule list     ").append(Lang.format(lang, "cmd.help.admin.rule_list"));
 		source.sendSuccess(() -> Component.literal(sb.toString()), false);
 		return 1;
+	}
+
+	/**
+	 * 解析命令源的语言（Phase 9）：在线玩家跟随客户端语言设置，
+	 * 控制台/其他命令源使用服务器默认语言（config.json language 字段）。
+	 */
+	public static String langOf(CommandSourceStack source) {
+		if (source != null && source.getEntity() instanceof ServerPlayer player) {
+			String language = CompatHelper.languageOf(player);
+			if (language != null && !language.isBlank()) {
+				return language;
+			}
+		}
+		return Lang.getDefaultLanguage();
 	}
 
 	/**

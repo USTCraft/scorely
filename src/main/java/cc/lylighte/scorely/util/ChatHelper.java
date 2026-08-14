@@ -1,5 +1,7 @@
 package cc.lylighte.scorely.util;
 
+import java.util.Locale;
+
 /**
  * 聊天消息文本工具。
  *
@@ -59,7 +61,7 @@ public final class ChatHelper {
 	// ========== 数字格式化 ==========
 
 	/**
-	 * 积分数字格式化：千分位分组。
+	 * 积分数字格式化：千分位分组，固定 {@code Locale.ROOT}（防服务器 locale 影响分隔符）。
 	 *
 	 * <ul>
 	 *   <li>整数 → {@code 1,234}</li>
@@ -71,9 +73,9 @@ public final class ChatHelper {
 			return "0";
 		}
 		if (value == Math.floor(value)) {
-			return String.format("%,.0f", value);
+			return String.format(Locale.ROOT, "%,.0f", value);
 		}
-		return String.format("%,.2f", value);
+		return String.format(Locale.ROOT, "%,.2f", value);
 	}
 
 	private ChatHelper() {

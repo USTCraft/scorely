@@ -3,8 +3,10 @@ package cc.lylighte.scorely.command.handlers;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
+import cc.lylighte.scorely.command.ScorelyCommands;
 import cc.lylighte.scorely.event.RefreshScheduler;
 import cc.lylighte.scorely.util.ChatHelper;
+import cc.lylighte.scorely.util.Lang;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -30,13 +32,13 @@ public final class RefreshCommand {
 	/** 刷新调用者本人的积分并提示结果。 */
 	private static int refresh(CommandSourceStack source, RefreshScheduler scheduler) throws CommandSyntaxException {
 		if (scheduler == null) {
-			source.sendFailure(Component.literal(ChatHelper.prefix(" 刷新服务未就绪，请稍后再试")));
+			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(ScorelyCommands.langOf(source), "cmd.refresh.unavailable"))));
 			return 0;
 		}
 		ServerPlayer player = source.getPlayerOrException();
 		scheduler.refreshPlayer(player.getUUID());
 		source.sendSuccess(() -> Component.literal(ChatHelper.prefix(
-			" 已刷新你的积分")), false);
+			" " + Lang.format(ScorelyCommands.langOf(source), "cmd.refresh.done"))), false);
 		return 1;
 	}
 }

@@ -33,6 +33,9 @@ public final class DefaultRules {
 	/**
 	 * 创建内置默认规则列表。
 	 *
+	 * <p>displayName 使用翻译键（{@code scorely.rule.*}，Phase 9 国际化）——
+	 * 命令层按玩家语言渲染；config.json 中服主自定义名不回退（字面文本）。</p>
+	 *
 	 * @return 不可变规则列表
 	 */
 	public static List<ScoringRule> create() {
@@ -42,7 +45,7 @@ public final class DefaultRules {
 	private static ScoringRule mining() {
 		ScoringRule rule = new ScoringRule();
 		rule.setId("mining");
-		rule.setDisplayName("挖掘榜");
+		rule.setDisplayName("scorely.rule.mining");
 		rule.setType(ScoringRule.TYPE_STAT);
 		rule.setMatchers(List.of(new StatMatcher("minecraft:mined", StatMatcher.WILDCARD)));
 		rule.setMultiplier(1.0);
@@ -52,7 +55,7 @@ public final class DefaultRules {
 	private static ScoringRule combat() {
 		ScoringRule rule = new ScoringRule();
 		rule.setId("combat");
-		rule.setDisplayName("战斗榜");
+		rule.setDisplayName("scorely.rule.combat");
 		rule.setType(ScoringRule.TYPE_STAT);
 		rule.setMatchers(List.of(new StatMatcher("minecraft:killed", StatMatcher.WILDCARD)));
 		rule.setMultiplier(2.0);
@@ -62,7 +65,7 @@ public final class DefaultRules {
 	private static ScoringRule exploration() {
 		ScoringRule rule = new ScoringRule();
 		rule.setId("exploration");
-		rule.setDisplayName("探索榜");
+		rule.setDisplayName("scorely.rule.exploration");
 		rule.setType(ScoringRule.TYPE_STAT);
 
 		StatMatcher walked = new StatMatcher("minecraft:custom", "minecraft:walked_one_cm");
@@ -86,7 +89,7 @@ public final class DefaultRules {
 	private static ScoringRule advancements() {
 		ScoringRule rule = new ScoringRule();
 		rule.setId("advancements");
-		rule.setDisplayName("进度榜");
+		rule.setDisplayName("scorely.rule.advancements");
 		rule.setType(ScoringRule.TYPE_ADVANCEMENT);
 		rule.setDefaultValue(10.0);
 		rule.setAdvancementValues(Map.of(

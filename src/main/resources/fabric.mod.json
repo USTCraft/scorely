@@ -3,7 +3,7 @@
 	"id": "scorely",
 	"version": "${version}",
 	"name": "Scorely",
-	"description": "统计玩家进度、计算积分、提供查询的服务端模组",
+	"description": "A server-side mod that tracks player progress, calculates scores, and provides query commands.",
 	"authors": [
 		"lylighte"
 	],
@@ -21,6 +21,7 @@
 	"mixins": [
 		"scorely.mixins.json"
 	],
+	"accessWidener": "scorely.classtweaker",
 	"depends": {
 		"fabricloader": ">=0.19.3",
 		"minecraft": "~26.2",
