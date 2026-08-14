@@ -80,5 +80,6 @@
 	"scorely.rule.combat": "Combat",
 	"scorely.rule.exploration": "Exploration",
 	"scorely.rule.advancements": "Advancements",
-	"scorely.rule.penalty": "Penalty"
+	"scorely.rule.penalty": "Penalty",
+	"modmenu.descriptionTranslation.scorely": "A server-side mod that tracks player progress, calculates scores, and provides query commands."
 }

@@ -12,7 +12,7 @@
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/scorely/icon.png",
-	"environment": "*",
+	"environment": "server",
 	"entrypoints": {
 		"main": [
 			"cc.lylighte.scorely.Scorely"
