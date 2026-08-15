@@ -1,10 +1,12 @@
 package cc.lylighte.scorely.command.handlers;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 
 import cc.lylighte.scorely.command.ScorelyCommands;
 import cc.lylighte.scorely.scoring.ScoreEntry;
@@ -15,6 +17,7 @@ import cc.lylighte.scorely.util.Lang;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 
@@ -22,12 +25,17 @@ import net.minecraft.server.MinecraftServer;
  * {@code /scorely rank} —— 排行榜。
  *
  * <ul>
- *   <li>{@code /scorely rank} —— 总榜 Top 10；</li>
+ *   <li>{@code /scorely rank} —— 总榜第 1 页；</li>
+ *   <li>{@code /scorely rank total} —— 总榜第 1 页（total 为总榜虚拟规则名）；</li>
+ *   <li>{@code /scorely rank total <page>} —— 总榜翻页（每页 10 条）；</li>
  *   <li>{@code /scorely rank <rule>} —— 指定规则排行榜（第 1 页）；</li>
- *   <li>{@code /scorely rank <rule> <page>} —— 翻页查看（每页 10 条）。</li>
+ *   <li>{@code /scorely rank <rule> <page>} —— 分榜翻页（每页 10 条）。</li>
  * </ul>
  */
 public final class RankCommand {
+
+	/** 总榜虚拟规则名（与无参 {@code rank} 语义一致，支持分页）。 */
+	private static final String TOTAL_RULE_ID = "total";
 
 	/** 每页条数。 */
 	private static final int PAGE_SIZE = 10;
@@ -37,41 +45,57 @@ public final class RankCommand {
 
 	public static LiteralArgumentBuilder<CommandSourceStack> build(ScoringEngine engine) {
 		return Commands.literal("rank")
-			.executes(ctx -> showTotal(ctx.getSource(), engine))
+			.executes(ctx -> showTotal(ctx.getSource(), engine, 1))
 			.then(Commands.argument("rule", StringArgumentType.word())
-				.suggests(ScorelyCommands.suggestRules(engine))
+				.suggests(suggestRules(engine))
 				.executes(ctx -> showRule(ctx.getSource(), engine, StringArgumentType.getString(ctx, "rule"), 1))
 				.then(Commands.argument("page", IntegerArgumentType.integer(1))
 					.executes(ctx -> showRule(ctx.getSource(), engine, StringArgumentType.getString(ctx, "rule"),
 						IntegerArgumentType.getInteger(ctx, "page")))));
 	}
 
-	/** 总榜 Top 10。 */
-	private static int showTotal(CommandSourceStack source, ScoringEngine engine) {
-		String lang = ScorelyCommands.langOf(source);
-		List<ScoreEntry> entries = engine.getTotalLeaderboard(PAGE_SIZE);
-		sendRanking(source, lang, Lang.format(lang, "cmd.rank.total"), entries, 1);
-		return 1;
+	/** rule 参数补全建议：虚拟总榜名 total + 全部规则 ID。 */
+	private static SuggestionProvider<CommandSourceStack> suggestRules(ScoringEngine engine) {
+		return (ctx, builder) -> SharedSuggestionProvider.suggest(
+			Stream.concat(Stream.of(TOTAL_RULE_ID), engine.getRules().stream().map(ScoringRule::getId)).toList(),
+			builder);
 	}
 
-	/** 指定规则排行榜（分页）。 */
+	/** 总榜分页（{@code rank} / {@code rank total} = 第 1 页；{@code rank total <page>} = 指定页）。 */
+	private static int showTotal(CommandSourceStack source, ScoringEngine engine, int page) {
+		String lang = ScorelyCommands.langOf(source);
+		return showPaged(source, lang, Lang.format(lang, "cmd.rank.total"), engine.getTotalLeaderboard(0), page);
+	}
+
+	/** 指定规则排行榜（分页；虚拟规则名 total = 总榜）。 */
 	private static int showRule(CommandSourceStack source, ScoringEngine engine, String ruleId, int page) {
 		String lang = ScorelyCommands.langOf(source);
+		// total = 总榜虚拟规则名（与无参 rank 语义一致，支持分页）
+		if (TOTAL_RULE_ID.equals(ruleId)) {
+			return showTotal(source, engine, page);
+		}
 		ScoringRule rule = ScorelyCommands.findRule(engine, ruleId);
 		if (rule == null) {
 			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.rule.not_found", ruleId))));
 			return 0;
 		}
-		List<ScoreEntry> all = engine.getLeaderboard(ruleId, 0);
 		String name = Lang.ruleName(lang, rule);
+		return showPaged(source, lang, name, engine.getLeaderboard(ruleId, 0), page);
+	}
 
+	/** 按页截取并渲染榜单（分榜/总榜共用分页语义：空榜第 1 页显示空提示，超页报错）。 */
+	private static int showPaged(CommandSourceStack source, String lang, String title, List<ScoreEntry> all, int page) {
+		if (all.isEmpty() && page == 1) {
+			sendRanking(source, lang, title, List.of(), 1);
+			return 1;
+		}
 		int start = (page - 1) * PAGE_SIZE;
 		if (start >= all.size()) {
 			source.sendFailure(Component.literal(ChatHelper.prefix(" " + Lang.format(lang, "cmd.rank.no_more_page", pageCount(all.size())))));
 			return 0;
 		}
 		int end = Math.min(start + PAGE_SIZE, all.size());
-		sendRanking(source, lang, name, all.subList(start, end), page);
+		sendRanking(source, lang, title, all.subList(start, end), page);
 		return 1;
 	}
 

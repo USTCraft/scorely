@@ -25,9 +25,11 @@
 ```
 /scorely score              → 查看自己的总积分
 /scorely score <rule>       → 查看自己在某规则下的积分
-/scorely rank               → 查看总积分排行榜（前10）
+/scorely rank               → 查看总积分排行榜（第 1 页）
+/scorely rank total         → 总榜（虚拟规则名，第 1 页）
+/scorely rank total <page>  → 总榜翻页
 /scorely rank <rule>        → 查看某规则排行榜
-/scorely rank <rule> <page> → 翻页查看
+/scorely rank <rule> <page> → 分榜翻页
 ```
 
 所有输出通过聊天消息返回，无需任何 GUI 或侧边栏。
@@ -356,9 +358,10 @@ dependencies {
 | `/scorely` | 显示帮助信息 | 所有人 |
 | `/scorely score` | 查看自己的各维度积分 + 总分 | 所有人 |
 | `/scorely score <rule>` | 查看自己在某维度下的积分 | 所有人 |
-| `/scorely rank` | 查看**总榜**排行榜 Top 10 | 所有人 |
+| `/scorely rank` | 查看**总榜**（第 1 页） | 所有人 |
+| `/scorely rank total [page]` | 总榜分页（total 为总榜虚拟规则名，每页 10 条） | 所有人 |
 | `/scorely rank <rule>` | 查看某维度排行榜 | 所有人 |
-| `/scorely rank <rule> <page>` | 翻页 | 所有人 |
+| `/scorely rank <rule> <page>` | 分榜翻页 | 所有人 |
 | `/scorely admin reload` | 重载配置 | OP |
 | `/scorely admin refresh` | 强制全量刷新积分 | OP |
 | `/scorely admin rule list` | 列出所有积分规则/维度 | OP |
