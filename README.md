@@ -70,4 +70,4 @@ Scorely 为社区服务器提供玩家积分体系：自动统计玩家挖掘、
 
 ## 许可证
 
-[CC0-1.0](LICENSE)
+[MIT](LICENSE)

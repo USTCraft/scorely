@@ -10,7 +10,7 @@
 	"contact": {
 		"sources": "https://github.com/lylighte/scorely"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/scorely/icon.png",
 	"environment": "server",
 	"entrypoints": {
